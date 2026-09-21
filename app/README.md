@@ -1,4 +1,4 @@
-# U2BUP 0.3.0
+# U2BUP 0.3.1
 
 Rust + Tauri + Vue 的本机录播工作台原型。第一阶段面向现有 LiveRec 历史素材，原始录像保留，成品写入独立目录。
 
@@ -14,6 +14,7 @@ Rust + Tauri + Vue 的本机录播工作台原型。第一阶段面向现有 Liv
 - SQLite 持久化素材、计划、任务与成品；启动时恢复中断状态，已登记产物会重新验证后复用。
 - Tauri Windows 桌面入口与同一套本机 WebUI，认证会话按端口隔离。
 - 浅色、深色、跟随系统三种显示模式，五种主题色、减少动态效果及顶栏明暗快捷切换。外观偏好保存在当前设备，系统模式会实时响应系统主题变化。
+- 主题色覆盖侧边栏选中态、总览图标与边框、标签、列表选择、直播间头像、进度条和弹窗；深色工作区使用中性底色与高对比文字。颜色统一在 `web/src/theme.css` 定义，组件样式引用语义变量。
 
 - YouTube 桌面 OAuth + PKCE、频道视频分页同步、成品串行断点上传与暂停/继续。
 - 视频标题查找替换/正则/前缀、描述、标签、公开状态批量预览与应用，以及应用内分组。
@@ -44,7 +45,7 @@ biliLive-tools 实时录制集成、AI、自动弹幕时间映射、任意格式
 
 ## Windows 便携包
 
-`dist/U2BUP-0.3.0-windows-x64/` 包含桌面程序、独立 Web 服务与 `resources/ffmpeg.exe`、`resources/ffprobe.exe`。
+`dist/U2BUP-0.3.1-windows-x64/` 包含桌面程序、独立 Web 服务与 `resources/ffmpeg.exe`、`resources/ffprobe.exe`。
 
 双击 `U2BUP.exe`。首次启动选择包含主播子目录的素材根目录；点击“扫描 LiveRec”。桌面数据存放于系统应用数据目录 `io.u2bup.desktop/data`，成品在同级 `exports`，根目录选择记录在 `library-root.txt`。
 

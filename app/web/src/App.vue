@@ -68,7 +68,7 @@ onUnmounted(()=>{if(interval)clearInterval(interval);if(toastTimer)clearTimeout(
       <div class="sidebar-heading">素材库位置</div>
       <button class="library-root" @click="view='settings'"><FolderOpen :size="17"/><span>LiveRec<small>{{assets.length}} 个录像文件</small></span><span class="dot"></span></button>
       <div class="sidebar-note"><ShieldCheck :size="19"/><p>原始素材，妥善保留<small>处理结果写入独立输出目录</small></p></div>
-      <div class="sidebar-bottom"><button :class="{active:view==='settings'}" @click="view='settings'"><Settings2 :size="18"/>设置与运行环境</button><div class="version"><span class="dot"></span>本机服务 <span>v0.3.0</span></div></div>
+      <div class="sidebar-bottom"><button :class="{active:view==='settings'}" @click="view='settings'"><Settings2 :size="18"/>设置与运行环境</button><div class="version"><span class="dot"></span>本机服务 <span>v0.3.1</span></div></div>
     </aside>
     <main>
       <header class="topbar"><div class="breadcrumb">工作空间 <ChevronRight :size="13"/><strong>{{nav.find(n=>n.id===view)?.label??'设置'}}</strong></div><div class="top-actions"><span class="local-chip"><Monitor :size="14"/> 本机模式</span><button class="icon-button theme-toggle" :title="resolvedTheme==='dark'?'切换到浅色模式':'切换到深色模式'" :aria-label="resolvedTheme==='dark'?'切换到浅色模式':'切换到深色模式'" @click="toggleDark"><Sun v-if="resolvedTheme==='dark'" :size="17"/><Moon v-else :size="17"/></button><button class="icon-button" title="刷新视图" aria-label="刷新视图" @click="perform(load)"><RefreshCw :size="17" :class="{spin:busy}"/></button><div class="avatar">U</div></div></header>
