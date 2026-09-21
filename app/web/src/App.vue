@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,ref,watch} from 'vue';
-import {Archive, ArrowDownUp, ArrowRight, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, CirclePlay, Clock3, Copy, Database, FileVideo, FolderOpen, HardDrive, Layers3, LayoutDashboard, ListChecks, LoaderCircle, Monitor, MoreHorizontal, Play, Plus, Radio, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Square, Terminal, WandSparkles, Workflow, X, Youtube} from 'lucide-vue-next';
+import {Archive, ArrowDownUp, ArrowRight, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, CirclePlay, Clock3, Copy, Database, FileVideo, FolderOpen, HardDrive, Layers3, LayoutDashboard, ListChecks, LoaderCircle, Monitor, Moon, MoreHorizontal, Play, Plus, Radio, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Square, Sun, Terminal, WandSparkles, Workflow, X, Youtube} from 'lucide-vue-next';
 import YouTube from './YouTube.vue';
+import AppearanceSettings from './AppearanceSettings.vue';
+import {useTheme} from './theme';
 import type {Asset,Job,Plan,Room,Snapshot} from './types';
 
 const data=ref<Snapshot|null>(null), view=ref('library'), search=ref(''), roomFilter=ref(''), roleFilter=ref('all'), page=ref(1), busy=ref(false), locked=ref(false), tokenInput=ref(''), toast=ref('');
 const selected=ref<Set<string>>(new Set()), detail=ref<Asset|null>(null), showPlan=ref(false), showRename=ref(false), chosenPlan=ref<Plan|null>(null), maxHours=ref(11+55/60), maxGap=ref(30), includeLegacy=ref(false);
 const naming=ref({template:'{主播} · {日期} · {标题}',find:'',replace:'',regex:false});
 const titleChanges=ref<{id:string;before:string;after:string}[]>([]), sort=ref('date'), dateFrom=ref(''), dateTo=ref('');
+const {resolvedTheme,toggleDark}=useTheme();
 let interval:ReturnType<typeof setInterval>|undefined,toastTimer:ReturnType<typeof setTimeout>|undefined;
 const nav=[{id:'library',label:'素材库',icon:Archive},{id:'rooms',label:'直播间',icon:Radio},{id:'pipeline',label:'后处理管线',icon:Workflow},{id:'tasks',label:'任务中心',icon:ListChecks},{id:'youtube',label:'YouTube',icon:Youtube}];
 const assets=computed(()=>data.value?.library.assets??[]),rooms=computed(()=>data.value?.library.rooms??[]),jobs=computed(()=>data.value?.jobs??[]);
@@ -65,10 +68,10 @@ onUnmounted(()=>{if(interval)clearInterval(interval);if(toastTimer)clearTimeout(
       <div class="sidebar-heading">素材库位置</div>
       <button class="library-root" @click="view='settings'"><FolderOpen :size="17"/><span>LiveRec<small>{{assets.length}} 个录像文件</small></span><span class="dot"></span></button>
       <div class="sidebar-note"><ShieldCheck :size="19"/><p>原始素材，妥善保留<small>处理结果写入独立输出目录</small></p></div>
-      <div class="sidebar-bottom"><button :class="{active:view==='settings'}" @click="view='settings'"><Settings2 :size="18"/>设置与运行环境</button><div class="version"><span class="dot"></span>本机服务 <span>v0.2.0</span></div></div>
+      <div class="sidebar-bottom"><button :class="{active:view==='settings'}" @click="view='settings'"><Settings2 :size="18"/>设置与运行环境</button><div class="version"><span class="dot"></span>本机服务 <span>v0.3.0</span></div></div>
     </aside>
     <main>
-      <header class="topbar"><div class="breadcrumb">工作空间 <ChevronRight :size="13"/><strong>{{nav.find(n=>n.id===view)?.label??'设置'}}</strong></div><div class="top-actions"><span class="local-chip"><Monitor :size="14"/> 本机模式</span><button class="icon-button" title="刷新视图" aria-label="刷新视图" @click="perform(load)"><RefreshCw :size="17" :class="{spin:busy}"/></button><div class="avatar">U</div></div></header>
+      <header class="topbar"><div class="breadcrumb">工作空间 <ChevronRight :size="13"/><strong>{{nav.find(n=>n.id===view)?.label??'设置'}}</strong></div><div class="top-actions"><span class="local-chip"><Monitor :size="14"/> 本机模式</span><button class="icon-button theme-toggle" :title="resolvedTheme==='dark'?'切换到浅色模式':'切换到深色模式'" :aria-label="resolvedTheme==='dark'?'切换到浅色模式':'切换到深色模式'" @click="toggleDark"><Sun v-if="resolvedTheme==='dark'" :size="17"/><Moon v-else :size="17"/></button><button class="icon-button" title="刷新视图" aria-label="刷新视图" @click="perform(load)"><RefreshCw :size="17" :class="{spin:busy}"/></button><div class="avatar">U</div></div></header>
       <section v-if="locked" class="connection-card"><div class="eyebrow">连接工作台</div><h1>建立本机会话</h1><p>请从服务启动链接打开，或粘贴本次启动令牌。令牌保存在应用数据目录的 connection.json 中。</p><input v-model="tokenInput" type="password" placeholder="启动令牌"/><button class="primary" @click="perform(()=>connect(tokenInput))">连接</button></section>
       <div v-else-if="data" class="content">
         <div v-if="scanRunning" class="scan-banner"><LoaderCircle :size="18" class="spin"/><span>{{data.scan.message}} · {{data.scan.completed}} / {{data.scan.total}}</span><progress :max="Math.max(data.scan.total,1)" :value="data.scan.completed"></progress></div>
@@ -115,7 +118,7 @@ onUnmounted(()=>{if(interval)clearInterval(interval);if(toastTimer)clearTimeout(
 
         <YouTube v-else-if="view==='youtube'"/>
         <template v-else-if="view==='settings'">
-          <div class="page-heading"><div><div class="eyebrow">LOCAL ENVIRONMENT</div><h1>你的素材，你的环境<span class="heading-dot">.</span></h1><p>当前为本机单用户原型，路径在启动时配置。</p></div></div><div class="panel settings-panel"><h2><Terminal :size="20"/>运行配置</h2><div v-for="(label,key) in {library:'素材根目录',output:'成品输出目录',data:'数据库与缓存',ffmpeg:'FFmpeg',ffprobe:'FFprobe',version:'应用版本',mode:'访问模式'}" :key="key" class="setting"><span>{{label}}</span><code>{{data.settings[key]}}</code></div></div><div class="panel settings-panel"><h2><ShieldCheck :size="20"/>本版能力边界</h2><p>已实现扫描、XML 历史资料、直播间信息抓取、显示标题编辑、合并计划、流复制合并及抽样验证。</p><p>支持超长文件自动转码切割及 YouTube 上传与批量管理。FLV 在线播放和实时录制尚未接入；未知时长素材仍阻止执行。</p><p>媒体原片不会自动删除。批量标题不会修改磁盘文件名。录制集成和远程 WebUI 将分阶段加入。</p></div><div v-if="data.library.errors.length" class="warning-panel"><h3>扫描期间的异常</h3><p v-for="e in data.library.errors" :key="e">{{e}}</p></div>
+          <div class="page-heading"><div><div class="eyebrow">LOCAL ENVIRONMENT</div><h1>你的素材，你的环境<span class="heading-dot">.</span></h1><p>当前为本机单用户原型，路径在启动时配置。</p></div></div><AppearanceSettings/><div class="panel settings-panel"><h2><Terminal :size="20"/>运行配置</h2><div v-for="(label,key) in {library:'素材根目录',output:'成品输出目录',data:'数据库与缓存',ffmpeg:'FFmpeg',ffprobe:'FFprobe',version:'应用版本',mode:'访问模式'}" :key="key" class="setting"><span>{{label}}</span><code>{{data.settings[key]}}</code></div></div><div class="panel settings-panel"><h2><ShieldCheck :size="20"/>本版能力边界</h2><p>已实现扫描、XML 历史资料、直播间信息抓取、显示标题编辑、合并计划、流复制合并及抽样验证。</p><p>支持超长文件自动转码切割及 YouTube 上传与批量管理。FLV 在线播放和实时录制尚未接入；未知时长素材仍阻止执行。</p><p>媒体原片不会自动删除。批量标题不会修改磁盘文件名。录制集成和远程 WebUI 将分阶段加入。</p></div><div v-if="data.library.errors.length" class="warning-panel"><h3>扫描期间的异常</h3><p v-for="e in data.library.errors" :key="e">{{e}}</p></div>
         </template>
       </div>
       <div v-else class="empty initial"><LoaderCircle class="spin" :size="30"/><h3>正在连接本机工作台…</h3><button class="subtle" @click="perform(load)">重试连接</button></div>

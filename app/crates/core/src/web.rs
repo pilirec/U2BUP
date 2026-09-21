@@ -143,7 +143,7 @@ async fn ui(req: Request) -> Response {
 async fn snapshot(State(s): State<Arc<AppState>>) -> Result<Json<Value>> {
     let library = s.library.read().await.clone();
     Ok(Json(
-        json!({"library":library,"scan":s.scan_status.lock().await.clone(),"jobs":s.db.list::<Job>("job")?,"plans":s.db.list::<Plan>("plan")?,"settings":{"library":s.config.library,"output":s.config.output,"data":s.config.data,"ffmpeg":s.config.ffmpeg,"ffprobe":s.config.ffprobe,"version":"0.2.0","mode":"本机 · 单用户"}}),
+        json!({"library":library,"scan":s.scan_status.lock().await.clone(),"jobs":s.db.list::<Job>("job")?,"plans":s.db.list::<Plan>("plan")?,"settings":{"library":s.config.library,"output":s.config.output,"data":s.config.data,"ffmpeg":s.config.ffmpeg,"ffprobe":s.config.ffprobe,"version":env!("CARGO_PKG_VERSION"),"mode":"本机 · 单用户"}}),
     ))
 }
 async fn status(State(s): State<Arc<AppState>>) -> Result<Json<Value>> {
