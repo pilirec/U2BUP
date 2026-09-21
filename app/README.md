@@ -2,6 +2,8 @@
 
 Rust + Tauri + Vue 的本机录播工作台原型。第一阶段面向现有 LiveRec 历史素材，原始录像保留，成品写入独立目录。
 
+下一阶段路线见 [开发规划](../docs/DEVELOPMENT-ROADMAP.md)：多平台/Docker、统一任务和分层导航、多目录媒体库、频道批处理、自动播放列表、工作流、弹幕与 UP 主投稿备份。
+
 ## 当前可用
 
 - 本地素材扫描、FFprobe 参数缓存、XML 历史资料、房间别名聚合。
@@ -35,7 +37,7 @@ biliLive-tools 实时录制集成、AI、自动弹幕时间映射、任意格式
 
 凭据保存在系统凭据存储（Windows Credential Manager；macOS Keychain；Linux keyutils 的登录会话存储尚未验证）。SQLite 保存视频缓存、分组、批次与上传会话地址，属于本机私有数据，不应提交 Git 或对外分享。桌面版与独立 Web 服务使用不同数据目录，OAuth 配置也分别保存。
 
-实现已通过本地协议测试，尚未用真实 OAuth 客户端完成 Google 授权、实际上传或远端修改验收。未审核的 API 项目可能只能私密上传；配额和频道上传资格以 Google 返回结果为准。上传会话过期时会保留记录并报错，不自动重新上传，以防产生重复视频。播放列表编辑、远端删除、定时发布和缩略图上传尚未实现。
+实现已通过本地协议测试。2026-09-21 用户确认已实际测试真实 YouTube 私密上传，结果可接受；该项记为用户实测通过，远端批量修改及其他发布/恢复场景不因此视为已全部验收。未审核的 API 项目可能只能私密上传；配额和频道上传资格以 Google 返回结果为准。上传会话过期时会保留记录并报错，不自动重新上传，以防产生重复视频。播放列表编辑、远端删除、定时发布和缩略图上传尚未实现。
 
 协议依据：[桌面 OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)、[断点续传](https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol)、[视频字段更新规则](https://developers.google.com/youtube/v3/docs/videos/update)。
 
