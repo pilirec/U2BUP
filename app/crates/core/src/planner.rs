@@ -56,6 +56,7 @@ pub fn build(library: &Library, req: PlanRequest) -> Result<Plan> {
             .then(a.id.cmp(&b.id))
     });
     let mut blocked = Vec::new();
+    let mut cuts = Vec::new();
     let mut groups: Vec<(Vec<Asset>, String)> = Vec::new();
     let mut last_selected: Option<String> = None;
     for a in assets {
@@ -68,8 +69,6 @@ pub fn build(library: &Library, req: PlanRequest) -> Result<Plan> {
             Some("录制时间未知，需先补充时间")
         } else if a.warnings.iter().any(|s| s.contains("最近发生变化")) {
             Some("文件可能仍在写入，请稍后重扫")
-        } else if d.unwrap() > req.max_duration || a.bytes as f64 * 1.02 > req.max_bytes as f64 {
-            Some("单文件超过当前输出限制；本版不执行自动切割，请先单独切片或调整规则")
         } else {
             None
         };
@@ -79,6 +78,27 @@ pub fn build(library: &Library, req: PlanRequest) -> Result<Plan> {
                 name: a.name.clone(),
                 reason: reason.into(),
             });
+            last_selected = None;
+            continue;
+        }
+        if d.unwrap() > req.max_duration - 1.0 || a.bytes as f64 * 1.02 > req.max_bytes as f64 {
+            let duration = d.unwrap();
+            let seconds = (req.max_duration - 2.0)
+                .min(duration * req.max_bytes as f64 / (a.bytes.max(1) as f64 * 1.3));
+            if seconds < 1.0 || (duration / seconds).ceil() > 5000.0 {
+                blocked.push(BlockedAsset {
+                    asset_id: a.id.clone(),
+                    name: a.name.clone(),
+                    reason: "切割预算过小或片数超过 5000，请提高单片预算".into(),
+                });
+            } else {
+                let mut offset = 0.0;
+                while offset < duration - 0.001 {
+                    let length = seconds.min(duration - offset);
+                    cuts.push((a.clone(), offset, length));
+                    offset += length;
+                }
+            }
             last_selected = None;
             continue;
         }
@@ -189,8 +209,46 @@ pub fn build(library: &Library, req: PlanRequest) -> Result<Plan> {
             bytes: g.iter().map(|a| a.bytes).sum(),
             inputs: g,
             reason,
+            cut_start: None,
         });
     }
+    for (a, offset, length) in cuts {
+        let id = digest(serde_json::to_vec(&(
+            "cut-h264-v1",
+            &a.id,
+            a.modified_ms,
+            a.bytes,
+            offset,
+            length,
+            req.max_bytes,
+        ))?);
+        let name = format!(
+            "{}_part_{:06}_{}.mp4",
+            safe_name(&a.name),
+            offset as u64,
+            &id[..8]
+        );
+        outputs.push(PlannedOutput {
+            id,
+            name,
+            room_id: a.room_id.clone(),
+            room_name: a.room_name.clone(),
+            title: a.title.clone(),
+            aspect: a.metadata.as_ref().unwrap().aspect.clone(),
+            duration: length,
+            bytes: (a.bytes as f64 * length / a.metadata.as_ref().unwrap().duration.unwrap() * 1.25)
+                as u64,
+            inputs: vec![a],
+            reason: format!("自动精确切割 · 从 {:.3} 秒开始 · H.264/AAC 转码", offset),
+            cut_start: Some(offset),
+        });
+    }
+    outputs.sort_by(|a, b| {
+        a.room_id.cmp(&b.room_id).then_with(|| {
+            (start(&a.inputs[0]) + a.cut_start.unwrap_or(0.0))
+                .total_cmp(&(start(&b.inputs[0]) + b.cut_start.unwrap_or(0.0)))
+        })
+    });
     let id = digest(serde_json::to_vec(&(&req, &outputs, &blocked))?);
     let estimated_bytes = (outputs.iter().map(|o| o.bytes).sum::<u64>() as f64 * 1.02) as u64;
     Ok(Plan {
@@ -276,7 +334,7 @@ mod tests {
         );
     }
     #[test]
-    fn splits_at_limit_and_blocks_oversized_file() {
+    fn splits_at_limit_and_cuts_oversized_file() {
         let a = vec![
             asset("a", 0, 22000.0, "x"),
             asset("b", 22000, 22000.0, "x"),
@@ -290,8 +348,12 @@ mod tests {
             req(&a),
         )
         .unwrap();
-        assert_eq!(p.outputs.len(), 2);
-        assert_eq!(p.blocked.len(), 1);
+        assert_eq!(p.outputs.len(), 4);
+        assert_eq!(p.blocked.len(), 0);
+        let cuts: Vec<_> = p.outputs.iter().filter(|o| o.cut_start.is_some()).collect();
+        assert_eq!(cuts.len(), 2);
+        assert!((cuts.iter().map(|o| o.duration).sum::<f64>() - 44000.0).abs() < 0.001);
+        assert_eq!(cuts[1].cut_start, Some(cuts[0].duration));
     }
     #[test]
     fn cross_midnight_and_idempotence() {

@@ -52,9 +52,26 @@ try{
   assert.deepEqual(retried.completed_outputs.map(a=>a.path),completed.completed_outputs.map(a=>a.path),'validated artifacts reused');
   await api('/scan',{});await until(async()=>!(await api('/status')).scan.running);assert.equal((await api('/snapshot')).library.assets.length,5);
   const hashesAfter=await Promise.all(files.map(async f=>createHash('sha256').update(await readFile(f)).digest('hex')));assert.deepEqual(hashesAfter,hashes,'source videos untouched');
+  const longFile=path.join(room,'录制-123-20230621-000000-100-自动切割.flv');
+  await exec('ffmpeg',['-hide_banner','-v','error','-f','lavfi','-i','testsrc2=size=160x90:rate=10','-f','lavfi','-i','sine=frequency=660:sample_rate=48000','-t','125','-c:v','libx264','-preset','ultrafast','-c:a','aac','-f','flv',longFile],{windowsHide:true});
+  await utimes(longFile,new Date('2023-06-21'),new Date('2023-06-21'));
+  const longHash=createHash('sha256').update(await readFile(longFile)).digest('hex');
+  await api('/scan',{});await until(async()=>!(await api('/status')).scan.running);
+  const longAsset=(await api('/snapshot')).library.assets.find(a=>a.name.includes('自动切割'));
+  const cutPlan=await api('/plans',{...request,asset_ids:[longAsset.id],max_duration:60});
+  assert.equal(cutPlan.outputs.length,3);assert.equal(cutPlan.blocked.length,0);assert.equal(cutPlan.outputs[0].cut_start,0);
+  for(let i=1;i<cutPlan.outputs.length;i++)assert.ok(Math.abs(cutPlan.outputs[i].cut_start-cutPlan.outputs[i-1].cut_start-cutPlan.outputs[i-1].duration)<0.001,'cut ranges continuous');
+  const cutJob=await api(`/plans/${cutPlan.id}/execute`,{});
+  const cutDone=await until(async()=>{const j=(await api('/status')).jobs.find(j=>j.id===cutJob.id);return ['completed','failed'].includes(j?.status)?j:null;},120000);
+  assert.equal(cutDone.status,'completed',cutDone.message);assert.equal(cutDone.completed_outputs.length,3);
+  for(const a of cutDone.completed_outputs){assert.ok(a.duration<=60);const {stdout}=await exec('ffprobe',['-v','error','-show_streams','-of','json',a.path],{windowsHide:true});assert.equal(JSON.parse(stdout).streams[0].codec_name,'h264');}
+  assert.equal(createHash('sha256').update(await readFile(longFile)).digest('hex'),longHash);
+  const yt=await api('/youtube');assert.equal(yt.connected,false);assert.ok(yt.artifacts.length>=6);assert.equal(yt.uploads.length,0);
+  await assert.rejects(()=>api('/youtube/uploads',{artifact_ids:[cutDone.completed_outputs[0].output_id],metadata:{title:'测试',privacy:'private',made_for_kids:false}}),/连接频道/);
+  assert.equal((await fetch(base+'/oauth/youtube/callback?state=invalid&code=x')).status,400);
   await utimes(files[0],new Date(),new Date());
   const stale=await api(`/plans/${plan.id}/execute`,{});
   const rejected=await until(async()=>{const j=(await api('/status')).jobs.find(j=>j.id===stale.id);return j?.status==='failed'?j:null;});assert.match(rejected.message,/源文件已变化/);
-  const report={passed:true,testRoot,checks:['authentication','origin rejection','scan','unknown duration blocking','aspect order','Chinese and apostrophe paths','title preview/apply','stale title conflict','invalid regex','cancel then retry','real FFmpeg merge and validation','idempotent output reuse','rescan idempotence','source SHA-256 unchanged','stale input rejection'],artifacts:completed.completed_outputs};
+  const report={passed:true,testRoot,checks:['authentication','origin rejection','scan','unknown duration blocking','aspect order','Chinese and apostrophe paths','title preview/apply','stale title conflict','invalid regex','cancel then retry','real FFmpeg merge and validation','idempotent output reuse','rescan idempotence','source SHA-256 unchanged','stale input rejection','automatic exact split','continuous split ranges','split source SHA-256 unchanged','YouTube setup status','unauthorized upload blocked','invalid OAuth callback rejected'],artifacts:[...completed.completed_outputs,...cutDone.completed_outputs]};
   await writeFile(path.join(testRoot,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }finally{child.kill();}

@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 anyhow = "1"
+base64 = "0.22"
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 fs2 = "0.4"
@@ -24,6 +26,7 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs"] }
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
+webbrowser = { version = "1", features = ["hardened"] }
 
 [dev-dependencies]
 tempfile = "3"

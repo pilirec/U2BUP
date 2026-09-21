@@ -3,5 +3,6 @@
 /web/dist/
 /.local/
 /desktop/resources/
+/desktop/gen/
 /dist/
 *.log

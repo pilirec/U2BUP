@@ -5,6 +5,7 @@ pub mod model;
 pub mod planner;
 pub mod scanner;
 mod web;
+mod youtube;
 
 use anyhow::{bail, Context, Result};
 use db::Db;
@@ -62,6 +63,7 @@ pub(crate) struct AppState {
     authority: String,
     shutdown: CancellationToken,
     _lock: std::fs::File,
+    youtube: youtube::Runtime,
 }
 pub struct Running {
     pub launch_url: String,
@@ -90,6 +92,7 @@ pub async fn start(mut config: Config) -> Result<Running> {
         .context("这个数据目录已有实例正在运行")?;
     let db = Db::open(&config.data.join("u2bup.sqlite3"))?;
     let library = db.get::<Library>("library", "main")?.unwrap_or_default();
+    youtube::recover(&db)?;
     if !library.root.is_empty() && std::path::Path::new(&library.root) != config.library {
         bail!("当前数据目录属于另一个素材库，请使用独立 --data 目录");
     }
@@ -123,6 +126,7 @@ pub async fn start(mut config: Config) -> Result<Running> {
         authority,
         shutdown: shutdown.clone(),
         _lock: lock,
+        youtube: youtube::Runtime::default(),
     });
     std::fs::write(
         config.data.join("connection.json"),

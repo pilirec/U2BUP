@@ -11,7 +11,7 @@ if ($LASTEXITCODE -ne 0) { throw 'WebUI build failed' }
 & (Join-Path $PSScriptRoot 'stage-media.ps1') -FfmpegDir $FfmpegDir
 & $cargoPath build --release -p u2bup-desktop -p u2bup-server --locked
 if ($LASTEXITCODE -ne 0) { throw 'Rust build failed' }
-$destination = Join-Path $applicationRoot 'dist\U2BUP-0.1.0-windows-x64'
+$destination = Join-Path $applicationRoot 'dist\U2BUP-0.2.0-windows-x64'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 Copy-Item -LiteralPath 'target\release\u2bup-desktop.exe' -Destination (Join-Path $destination 'U2BUP.exe') -Force
 Copy-Item -LiteralPath 'target\release\u2bup-server.exe' -Destination (Join-Path $destination 'u2bup-server.exe') -Force

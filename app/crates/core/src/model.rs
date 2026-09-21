@@ -103,6 +103,8 @@ pub struct PlannedOutput {
     pub bytes: u64,
     pub inputs: Vec<Asset>,
     pub reason: String,
+    #[serde(default)]
+    pub cut_start: Option<f64>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Job {

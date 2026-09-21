@@ -19,7 +19,7 @@ use tower_http::services::ServeFile;
 #[derive(RustEmbed)]
 #[folder = "../../web/dist/"]
 struct Ui;
-struct ApiError(anyhow::Error);
+pub(crate) struct ApiError(anyhow::Error);
 impl<E: Into<anyhow::Error>> From<E> for ApiError {
     fn from(e: E) -> Self {
         Self(e.into())
@@ -39,6 +39,7 @@ type Result<T> = std::result::Result<T, ApiError>;
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/session", post(session))
+        .merge(crate::youtube::router())
         .route("/api/snapshot", get(snapshot))
         .route("/api/status", get(status))
         .route("/api/scan", post(scan))
@@ -142,7 +143,7 @@ async fn ui(req: Request) -> Response {
 async fn snapshot(State(s): State<Arc<AppState>>) -> Result<Json<Value>> {
     let library = s.library.read().await.clone();
     Ok(Json(
-        json!({"library":library,"scan":s.scan_status.lock().await.clone(),"jobs":s.db.list::<Job>("job")?,"plans":s.db.list::<Plan>("plan")?,"settings":{"library":s.config.library,"output":s.config.output,"data":s.config.data,"ffmpeg":s.config.ffmpeg,"ffprobe":s.config.ffprobe,"version":"0.1.0","mode":"本机 · 单用户"}}),
+        json!({"library":library,"scan":s.scan_status.lock().await.clone(),"jobs":s.db.list::<Job>("job")?,"plans":s.db.list::<Plan>("plan")?,"settings":{"library":s.config.library,"output":s.config.output,"data":s.config.data,"ffmpeg":s.config.ffmpeg,"ffprobe":s.config.ffprobe,"version":"0.2.0","mode":"本机 · 单用户"}}),
     ))
 }
 async fn status(State(s): State<Arc<AppState>>) -> Result<Json<Value>> {

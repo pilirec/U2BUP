@@ -46,8 +46,20 @@ pub async fn execute(state: Arc<AppState>, plan: Plan, mut job: Job, cancel: Can
             for a in &o.inputs {contents.push_str(&media::concat_line(&media::resolve_input(&state.config.library,&a.relative_path)?)?);}
             std::fs::write(&list,contents)?;
             let log=std::fs::File::create(&log_path)?;
-            let mut child=media::command(&state.config.ffmpeg).args(["-hide_banner","-nostdin","-v","warning","-fflags","+genpts","-f","concat","-safe","0","-i"]).arg(&list)
-                .args(["-map","0:v:0","-map","0:a?","-c","copy","-avoid_negative_ts","make_zero","-progress","pipe:1","-nostats","-n"]).arg(&temporary)
+            let mut command=media::command(&state.config.ffmpeg);
+            command.args(["-hide_banner","-nostdin","-v","warning"]);
+            if let Some(offset)=o.cut_start {
+                let input=media::resolve_input(&state.config.library,&o.inputs[0].relative_path)?;
+                let audio_count=o.inputs[0].metadata.as_ref().unwrap().streams.iter().filter(|s|s["codec_type"]=="audio").count() as u64;
+                let budget=(plan.request.max_bytes as f64*8.0*0.85/o.duration) as u64;
+                let video_rate=budget.saturating_sub(audio_count*192_000).min(20_000_000);
+                if video_rate<100_000 {bail!("体积预算不足以编码音视频，请提高预算");}
+                command.args(["-ss",&format!("{offset:.6}"),"-noautorotate","-i"]).arg(input)
+                    .args(["-t",&format!("{:.6}",o.duration),"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","fast","-crf","20","-maxrate",&video_rate.to_string(),"-bufsize",&(video_rate*2).to_string(),"-pix_fmt","yuv420p","-c:a","aac","-b:a","192k"]);
+            } else {
+                command.args(["-fflags","+genpts","-f","concat","-safe","0","-i"]).arg(&list).args(["-map","0:v:0","-map","0:a?","-c","copy"]);
+            }
+            let mut child=command.args(["-avoid_negative_ts","make_zero","-progress","pipe:1","-nostats","-n"]).arg(&temporary)
                 .stdout(Stdio::piped()).stderr(Stdio::from(log)).spawn().context("无法启动 FFmpeg")?;
             let mut lines=BufReader::new(child.stdout.take().unwrap()).lines();
             job.message=format!("合并 {}/{}：{}",index+1,plan.outputs.len(),o.name);save(&state,&mut job)?;
@@ -128,7 +140,15 @@ async fn validate(
     if (d - o.duration).abs() > 2.0f64.max(o.duration * 0.005) {
         bail!("输出时长与输入总时长不符");
     }
-    if m.width != expected.width || m.height != expected.height || m.codec != expected.codec {
+    if m.width != expected.width
+        || m.height != expected.height
+        || m.codec
+            != if o.cut_start.is_some() {
+                "h264"
+            } else {
+                &expected.codec
+            }
+    {
         bail!("输出视频参数不符");
     }
     let expected_audio = expected
