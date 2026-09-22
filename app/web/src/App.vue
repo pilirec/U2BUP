@@ -105,7 +105,7 @@ onUnmounted(()=>{window.removeEventListener('hashchange',syncRoute);window.remov
       <div class="sidebar-heading">当前媒体库</div>
       <button class="library-root" @click="navigate('/settings/environment')"><FolderOpen :size="17"/><span>LiveRec<small>{{assets.length}} 个录像文件</small></span><span class="dot"></span></button>
 
-      <div class="sidebar-bottom"><div class="version"><span class="dot"></span>U2BUP <span>v0.4.0</span></div></div>
+      <div class="sidebar-bottom"><div class="version"><span class="dot"></span>U2BUP <span>v0.5.0</span></div></div>
     </aside>
     <main>
       <header class="topbar"><button class="icon-button mobile-menu-button" aria-label="展开或收起导航" :aria-expanded="mobileMenu" @click="mobileMenu=!mobileMenu"><ListChecks :size="19"/></button><div class="breadcrumb">{{nav.find(n=>n.id===view)?.label}} <ChevronRight :size="13"/><strong>{{route.label}}</strong></div><div class="top-actions"><span class="local-chip"><Monitor :size="14"/> {{data?.settings.mode??'工作台'}}</span><button class="icon-button theme-toggle" :title="resolvedTheme==='dark'?'切换到浅色模式':'切换到深色模式'" :aria-label="resolvedTheme==='dark'?'切换到浅色模式':'切换到深色模式'" @click="toggleDark"><Sun v-if="resolvedTheme==='dark'" :size="17"/><Moon v-else :size="17"/></button><button class="icon-button" title="刷新视图" aria-label="刷新视图" @click="perform(load)"><RefreshCw :size="17" :class="{spin:busy}"/></button><div class="avatar">U</div></div></header>
