@@ -25,7 +25,7 @@ pub(crate) const HEADLESS_REASON: &str =
 type HttpResult<T> = std::result::Result<Json<T>, ApiError>;
 #[derive(Default)]
 pub(crate) struct Runtime {
-    operation: Arc<Mutex<()>>,
+    pub(crate) operation: Arc<Mutex<()>>,
     credentials: Mutex<()>,
     pending: Mutex<Option<Pending>>,
     queue: Mutex<()>,
@@ -155,7 +155,7 @@ async fn access(s: &AppState) -> Result<String> {
     }
     Ok(c.access_token)
 }
-async fn api_get(s: &AppState, path: &str, query: &[(&str, &str)]) -> Result<Value> {
+pub(crate) async fn api_get(s: &AppState, path: &str, query: &[(&str, &str)]) -> Result<Value> {
     checked(
         client()?
             .get(format!("{}/{path}", endpoint(s, API)))
@@ -164,6 +164,94 @@ async fn api_get(s: &AppState, path: &str, query: &[(&str, &str)]) -> Result<Val
             .send()
             .await
             .map_err(|_| anyhow::anyhow!("YouTube 网络请求失败"))?,
+    )
+    .await
+}
+// Workflow endpoints share the same credential store, channel fence and operation lock.
+pub(crate) fn workflow_channel(s: &AppState) -> Result<String> {
+    if s.config.headless {
+        bail!("{HEADLESS_REASON}");
+    }
+    let c = credentials(s)?;
+    if c.channel_id.is_empty() || c.access_token.is_empty() {
+        bail!("请先连接 YouTube 频道");
+    }
+    Ok(c.channel_id)
+}
+#[derive(Debug)]
+struct WorkflowResponseError {
+    definitive: bool,
+    message: String,
+}
+impl std::fmt::Display for WorkflowResponseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+impl std::error::Error for WorkflowResponseError {}
+async fn workflow_response(response: reqwest::Response) -> Result<Value> {
+    let status = response.status();
+    checked(response).await.map_err(|e| {
+        WorkflowResponseError {
+            definitive: status.is_client_error() && status != reqwest::StatusCode::REQUEST_TIMEOUT,
+            message: format!("{e:#}"),
+        }
+        .into()
+    })
+}
+pub(crate) fn workflow_definitive_failure(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<WorkflowResponseError>()
+        .is_some_and(|e| e.definitive)
+}
+pub(crate) async fn workflow_write(
+    s: &AppState,
+    method: reqwest::Method,
+    path: &str,
+    part: &str,
+    body: &Value,
+    etag: Option<&str>,
+) -> Result<Value> {
+    workflow_channel(s)?;
+    if !["videos", "playlists", "playlistItems"].contains(&path) {
+        bail!("不支持的管线写入目标");
+    }
+    let mut request = client()?
+        .request(method, format!("{}/{path}", endpoint(s, API)))
+        .query(&[("part", part)])
+        .bearer_auth(access(s).await?)
+        .json(body);
+    if let Some(etag) = etag {
+        request = request.header("If-Match", etag);
+    }
+    workflow_response(
+        request
+            .send()
+            .await
+            .map_err(|_| anyhow::anyhow!("更新响应未知；重试时必须先核对远端状态"))?,
+    )
+    .await
+}
+pub(crate) async fn workflow_thumbnail(
+    s: &AppState,
+    video_id: &str,
+    bytes: Vec<u8>,
+) -> Result<Value> {
+    workflow_channel(s)?;
+    let url = format!(
+        "{}/thumbnails/set",
+        endpoint(s, UPLOAD).trim_end_matches("/videos")
+    );
+    workflow_response(
+        client()?
+            .post(url)
+            .query(&[("videoId", video_id), ("uploadType", "media")])
+            .bearer_auth(access(s).await?)
+            .header("Content-Type", "image/jpeg")
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|_| anyhow::anyhow!("封面上传响应未知，请在 Studio 核对后重新预览"))?,
     )
     .await
 }
@@ -573,6 +661,8 @@ fn save_upload(db: &Db, job: &mut UploadJob) -> Result<()> {
 struct Enqueue {
     artifact_ids: Vec<String>,
     metadata: Metadata,
+    #[serde(default)]
+    use_workflow_metadata: bool,
 }
 pub(crate) fn recover(db: &Db) -> Result<()> {
     for mut j in db.list::<UploadJob>("yt-upload")? {
@@ -617,6 +707,29 @@ async fn enqueue(State(s): State<Arc<AppState>>, Json(r): Json<Enqueue>) -> Http
             return Err(anyhow::anyhow!("成品已变化或超过 YouTube 上传限制").into());
         }
         let mut metadata = r.metadata.clone();
+        if r.use_workflow_metadata {
+            let prepared = crate::workflow::prepared_upload(&s.db, &a.source_ids)?
+                .context("成品没有可继承的素材元信息")?;
+            let library = s.library.read().await;
+            for source_id in &a.source_ids {
+                let source = library
+                    .assets
+                    .iter()
+                    .find(|asset| asset.id == *source_id)
+                    .context("成品来源素材已不存在，请重新检查上传元信息")?;
+                if source.display_title.as_ref().unwrap_or(&source.title) != &prepared.title {
+                    return Err(anyhow::anyhow!(
+                        "素材标题在管线处理后变化，请重新应用管线元信息再上传"
+                    )
+                    .into());
+                }
+            }
+            metadata.title = prepared.title;
+            metadata.description = prepared.description;
+            metadata.tags = prepared.tags;
+            metadata.category_id = prepared.category_id;
+            metadata.privacy = prepared.privacy;
+        }
         metadata.title = metadata.title.replace(
             "{文件名}",
             path.file_stem()
@@ -910,7 +1023,7 @@ struct Edit {
     privacy: Option<String>,
     group: Option<String>,
 }
-fn writable(v: &Value, part: &str) -> Value {
+pub(crate) fn writable(v: &Value, part: &str) -> Value {
     let fields = if part == "snippet" {
         vec![
             "title",
@@ -1142,7 +1255,7 @@ mod tests {
     }
 }
 #[cfg(test)]
-mod protocol_tests {
+pub(crate) mod protocol_tests {
     use super::*;
     use axum::{
         body::Bytes,
@@ -1206,7 +1319,7 @@ mod protocol_tests {
         }
         response
     }
-    fn state(root: &std::path::Path, base: String) -> AppState {
+    pub(crate) fn state(root: &std::path::Path, base: String) -> AppState {
         AppState {
             config: crate::Config {
                 library: root.into(),

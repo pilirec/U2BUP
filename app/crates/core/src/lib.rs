@@ -5,6 +5,7 @@ pub mod model;
 pub mod planner;
 pub mod scanner;
 mod web;
+mod workflow;
 mod youtube;
 
 use anyhow::{bail, Context, Result};
@@ -134,6 +135,7 @@ pub async fn start(mut config: Config) -> Result<Running> {
     let db = Db::open(&config.data.join("u2bup.sqlite3"))?;
     let library = db.get::<Library>("library", "main")?.unwrap_or_default();
     youtube::recover(&db)?;
+    workflow::recover(&db)?;
     if !library.root.is_empty() && std::path::Path::new(&library.root) != config.library {
         bail!("当前数据目录属于另一个素材库，请使用独立 --data 目录");
     }

@@ -40,6 +40,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/session", post(session))
         .merge(crate::youtube::router())
+        .merge(crate::workflow::router())
         .route("/api/snapshot", get(snapshot))
         .route("/api/status", get(status))
         .route("/api/tasks", get(tasks))

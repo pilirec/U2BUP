@@ -7,6 +7,7 @@ export const routes = [
   {path:'/rooms/errors',group:'rooms',label:'资料更新异常',mode:'errors'},
   {path:'/pipeline/current',group:'pipeline',label:'合并与切割',mode:'current'},
   {path:'/pipeline/history',group:'pipeline',label:'已保存计划',mode:'history'},
+  {path:'/pipeline/workflows',group:'pipeline',label:'自定义管线',mode:'workflows'},
   {path:'/youtube/videos',group:'youtube',label:'频道视频',mode:'videos'},
   {path:'/youtube/upload',group:'youtube',label:'上传准备',mode:'upload'},
   {path:'/youtube/history',group:'youtube',label:'批量变更记录',mode:'history'},
