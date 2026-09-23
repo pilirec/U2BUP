@@ -130,8 +130,7 @@ pub async fn start(mut config: Config) -> Result<Running> {
     std::fs::create_dir_all(&config.output)?;
     config.output = config.output.canonicalize()?;
     if config.library.exists()
-        && (config.output.starts_with(&config.library)
-            || config.data.starts_with(&config.library))
+        && (config.output.starts_with(&config.library) || config.data.starts_with(&config.library))
     {
         bail!("应用数据和输出目录必须在原始素材库之外");
     }

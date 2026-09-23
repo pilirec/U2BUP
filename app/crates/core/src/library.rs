@@ -11,10 +11,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{
-    path,
-    sync::Arc,
-};
+use std::{path, sync::Arc};
 use walkdir::WalkDir;
 
 macro_rules! bail_api {
@@ -50,14 +47,8 @@ async fn list_libraries(State(s): State<Arc<AppState>>) -> HttpResult<Value> {
     Ok(Json(json!({ "libraries": libs })))
 }
 
-async fn get_library(
-    State(s): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> HttpResult<Value> {
-    let lib: LibraryRoot = s
-        .db
-        .library_get(&id)?
-        .context("素材库不存在")?;
+async fn get_library(State(s): State<Arc<AppState>>, Path(id): Path<String>) -> HttpResult<Value> {
+    let lib: LibraryRoot = s.db.library_get(&id)?.context("素材库不存在")?;
     let count = s.db.asset_count_for_library(&id)?;
     Ok(Json(json!({ "library": lib, "assetCount": count })))
 }
@@ -173,7 +164,10 @@ async fn delete_library(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> HttpResult<Value> {
     let lib: LibraryRoot = s.db.library_get(&id)?.context("素材库不存在")?;
-    let delete_assets = params.get("deleteAssets").map(|v| v == "true").unwrap_or(false);
+    let delete_assets = params
+        .get("deleteAssets")
+        .map(|v| v == "true")
+        .unwrap_or(false);
     let asset_count = s.db.asset_count_for_library(&id)?;
     if delete_assets {
         s.db.asset_delete_for_library(&id)?;
@@ -204,10 +198,7 @@ async fn library_status(
 
 // ── Scan ──────────────────────────────────────────────────────────────────────
 
-async fn trigger_scan(
-    State(s): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> HttpResult<Value> {
+async fn trigger_scan(State(s): State<Arc<AppState>>, Path(id): Path<String>) -> HttpResult<Value> {
     let lib: LibraryRoot = s.db.library_get(&id)?.context("素材库不存在")?;
     if !lib.enabled {
         bail_api!("素材库已禁用，请先启用后再扫描");
@@ -472,10 +463,7 @@ async fn list_assets(
     }
 }
 
-async fn get_asset(
-    State(s): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> HttpResult<Value> {
+async fn get_asset(State(s): State<Arc<AppState>>, Path(id): Path<String>) -> HttpResult<Value> {
     let record = s.db.asset_get(&id)?.context("素材不存在")?;
     Ok(Json(serde_json::to_value(&record.asset)?))
 }
@@ -519,7 +507,9 @@ async fn update_asset_meta(
         record.pub_title = a.pub_title.clone();
     }
     if let Some(v) = body.pub_description {
-        if v.len() > 5000 { bail_api!("描述不能超过 5000 字节"); }
+        if v.len() > 5000 {
+            bail_api!("描述不能超过 5000 字节");
+        }
         a.pub_description = if v.is_empty() { None } else { Some(v) };
     }
     if let Some(v) = body.pub_tags {
@@ -538,10 +528,16 @@ async fn update_asset_meta(
         }
         a.pub_privacy = v;
     }
-    if let Some(v) = body.pub_language { a.pub_language = Some(v); }
-    if let Some(v) = body.pub_audio_lang { a.pub_audio_lang = Some(v); }
+    if let Some(v) = body.pub_language {
+        a.pub_language = Some(v);
+    }
+    if let Some(v) = body.pub_audio_lang {
+        a.pub_audio_lang = Some(v);
+    }
     if let Some(v) = body.custom_tags {
-        if v.len() > 100 { bail_api!("自定义标签过多"); }
+        if v.len() > 100 {
+            bail_api!("自定义标签过多");
+        }
         record.custom_tags_json = Some(serde_json::to_string(&v)?);
         a.custom_tags = v;
     }
@@ -555,7 +551,11 @@ async fn update_asset_meta(
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
-fn validate_library_body(name: &str, path: &str, exclude: &[String]) -> std::result::Result<(), ApiError> {
+fn validate_library_body(
+    name: &str,
+    path: &str,
+    exclude: &[String],
+) -> std::result::Result<(), ApiError> {
     if name.trim().is_empty() || name.chars().count() > 80 {
         bail_api!("素材库名称应为 1–80 字");
     }
@@ -576,7 +576,10 @@ fn validate_pub_title(v: &str) -> std::result::Result<(), ApiError> {
 }
 
 fn validate_tags(tags: &[String]) -> std::result::Result<(), ApiError> {
-    if tags.iter().any(|t| t.trim().is_empty() || t.contains(['<', '>'])) {
+    if tags
+        .iter()
+        .any(|t| t.trim().is_empty() || t.contains(['<', '>']))
+    {
         bail_api!("标签为空或含尖括号");
     }
     let total: usize = tags
@@ -590,13 +593,12 @@ fn validate_tags(tags: &[String]) -> std::result::Result<(), ApiError> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::Db;
     use axum::{extract::State, Json};
-    
+
     use std::{fs, sync::Arc};
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -631,7 +633,11 @@ mod tests {
 
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("我的素材库", LibraryKind::Folder, lib_dir.to_str().unwrap())),
+            Json(lib_body(
+                "我的素材库",
+                LibraryKind::Folder,
+                lib_dir.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -657,7 +663,11 @@ mod tests {
         let s = make_state(tmp.path());
         let result = create_library(
             State(s),
-            Json(lib_body("bad", LibraryKind::Folder, "/nonexistent/path/xyz")),
+            Json(lib_body(
+                "bad",
+                LibraryKind::Folder,
+                "/nonexistent/path/xyz",
+            )),
         )
         .await;
         assert!(result.is_err(), "should reject nonexistent path");
@@ -686,7 +696,11 @@ mod tests {
 
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("原始名称", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "原始名称",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -719,7 +733,11 @@ mod tests {
 
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("删除测试", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "删除测试",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -794,7 +812,11 @@ mod tests {
         // Create the library.
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("scan test", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "scan test",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -802,12 +824,9 @@ mod tests {
 
         // Trigger scan (this runs inline via tokio::spawn inside trigger_scan,
         // so we give the task a moment to complete).
-        trigger_scan(
-            State(s.clone()),
-            axum::extract::Path(lib_id.clone()),
-        )
-        .await
-        .unwrap();
+        trigger_scan(State(s.clone()), axum::extract::Path(lib_id.clone()))
+            .await
+            .unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         // Check asset count.
@@ -854,7 +873,11 @@ mod tests {
         let s = make_state(tmp.path());
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("inc test", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "inc test",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -884,7 +907,11 @@ mod tests {
 
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("disabled", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "disabled",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -921,7 +948,11 @@ mod tests {
         let s = make_state(tmp.path());
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("paged", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "paged",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -938,12 +969,9 @@ mod tests {
             per_page: 3,
             page: 0,
         };
-        let result = list_assets(
-            State(s.clone()),
-            axum::extract::Query(q),
-        )
-        .await
-        .unwrap();
+        let result = list_assets(State(s.clone()), axum::extract::Query(q))
+            .await
+            .unwrap();
         assert_eq!(result.0["total"], 5);
         assert_eq!(result.0["assets"].as_array().unwrap().len(), 3);
 
@@ -971,7 +999,11 @@ mod tests {
 
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("meta test", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "meta test",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -984,7 +1016,11 @@ mod tests {
 
         let assets = list_assets(
             State(s.clone()),
-            axum::extract::Query(AssetQuery { library_id: Some(lib_id), per_page: 10, page: 0 }),
+            axum::extract::Query(AssetQuery {
+                library_id: Some(lib_id),
+                per_page: 10,
+                page: 0,
+            }),
         )
         .await
         .unwrap();
@@ -1030,7 +1066,11 @@ mod tests {
 
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("invalid", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "invalid",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -1042,7 +1082,11 @@ mod tests {
 
         let assets = list_assets(
             State(s.clone()),
-            axum::extract::Query(AssetQuery { library_id: Some(lib_id), per_page: 10, page: 0 }),
+            axum::extract::Query(AssetQuery {
+                library_id: Some(lib_id),
+                per_page: 10,
+                page: 0,
+            }),
         )
         .await
         .unwrap();
@@ -1053,9 +1097,14 @@ mod tests {
             axum::extract::Path(asset_id),
             Json(UpdateMetaBody {
                 pub_privacy: Some("everyone".into()), // invalid
-                pub_title: None, pub_description: None, pub_tags: None,
-                pub_category_id: None, pub_language: None, pub_audio_lang: None,
-                custom_tags: None, display_title: None,
+                pub_title: None,
+                pub_description: None,
+                pub_tags: None,
+                pub_category_id: None,
+                pub_language: None,
+                pub_audio_lang: None,
+                custom_tags: None,
+                display_title: None,
             }),
         )
         .await;
@@ -1072,7 +1121,11 @@ mod tests {
 
         let resp = create_library(
             State(s.clone()),
-            Json(lib_body("long title", LibraryKind::Folder, media.to_str().unwrap())),
+            Json(lib_body(
+                "long title",
+                LibraryKind::Folder,
+                media.to_str().unwrap(),
+            )),
         )
         .await
         .unwrap();
@@ -1084,7 +1137,11 @@ mod tests {
 
         let assets = list_assets(
             State(s.clone()),
-            axum::extract::Query(AssetQuery { library_id: Some(lib_id), per_page: 10, page: 0 }),
+            axum::extract::Query(AssetQuery {
+                library_id: Some(lib_id),
+                per_page: 10,
+                page: 0,
+            }),
         )
         .await
         .unwrap();
@@ -1096,9 +1153,14 @@ mod tests {
             axum::extract::Path(asset_id),
             Json(UpdateMetaBody {
                 pub_title: Some(long_title),
-                pub_description: None, pub_tags: None, pub_privacy: None,
-                pub_category_id: None, pub_language: None, pub_audio_lang: None,
-                custom_tags: None, display_title: None,
+                pub_description: None,
+                pub_tags: None,
+                pub_privacy: None,
+                pub_category_id: None,
+                pub_language: None,
+                pub_audio_lang: None,
+                custom_tags: None,
+                display_title: None,
             }),
         )
         .await;
@@ -1137,7 +1199,11 @@ mod tests {
         // Re-open (simulates upgrade).
         let db2 = Db::open(&tmp.path().join("test.sqlite")).unwrap();
         let v: Option<serde_json::Value> = db2.get("test-kind", "test-id").unwrap();
-        assert_eq!(v.unwrap()["value"], 42, "v1 documents must survive migration");
+        assert_eq!(
+            v.unwrap()["value"],
+            42,
+            "v1 documents must survive migration"
+        );
     }
 
     // ── fast_file_hash ────────────────────────────────────────────────────

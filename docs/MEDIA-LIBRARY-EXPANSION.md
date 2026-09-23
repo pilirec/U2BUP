@@ -352,19 +352,19 @@ hash = SHA-256(前 1MB 字节 + LE u64(文件大小))[:16]
 
 ### Phase 1：多素材库基础（v0.8.0）
 
-优先级最高，后续所有功能依赖。
+优先级最高，后续所有功能依赖。当前进度以 `v0.8.0-preview.1` 发布预览，下列项全部完成后发正式 `v0.8.0`。
 
 **后端**
-- [ ] `libraries` 表 + CRUD API
-- [ ] `assets_v2` 表 + 迁移脚本（现有 liverec 数据迁移）
-- [ ] `folder` 类型扫描器
-- [ ] `/api/assets` 分页查询 API
+- [x] `libraries` 表 + CRUD API
+- [ ] `assets_v2` 表 + 迁移脚本（表已建；现有 liverec 数据尚未迁移）
+- [x] `folder` 类型扫描器
+- [x] `/api/assets` 分页查询 API
 - [ ] 工作目录设置（`config.json`，不再强制 `--library` 参数）
-- [ ] 首次启动不强制选库，`--library` 参数保留为兼容入口
+- [ ] 首次启动不强制选库，`--library` 参数保留为兼容入口（已不强制；`--library` 尚未自动建 liverec 库）
 
 **前端**
-- [ ] 欢迎界面 / 添加素材库引导
-- [ ] 侧边栏多库切换
+- [x] 欢迎界面 / 添加素材库引导
+- [x] 侧边栏多库切换
 - [ ] 平铺列表视图（跨库）
 - [ ] 素材发布元数据编辑面板（pub_title / pub_tags / pub_description）
 

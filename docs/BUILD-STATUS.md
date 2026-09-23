@@ -1,8 +1,22 @@
-# v0.8（进行中）：多素材库基础架构 Phase 1
+# v0.8.0-preview.1：多素材库基础架构 Phase 1（预览）
 
-日期：2026-09-23。基线：v0.7.0。状态：**后端完成，前端待实施。**
+日期：2026-09-23。基线：v0.7.0。版本号统一为 `0.8.0-preview.1`，按 release 规则推送该 tag 只生成 GitHub **Pre-release**（各平台 unbundled zip，不含 FFmpeg）。状态：**后端完成；前端欢迎界面与侧边栏多库切换已完成；发布元数据面板、跨库列表与旧数据迁移未完成**，Phase 1 全部完成后再发正式 `v0.8.0`。
 
-## 本次改动（2026-09-23）
+版本编号说明：[开发规划](DEVELOPMENT-ROADMAP.md)第 6 节原把 v0.8 定为「工作流与弹幕」。2026-09-23 起以 [MEDIA-LIBRARY-EXPANSION](MEDIA-LIBRARY-EXPANSION.md) 第 9 节为准：v0.8 = 多素材库基础，v0.9 = LLM 集成与发布平台扩展。
+
+## 前端改动（fefea93）
+
+- 新组件 `LibraryManager.vue`：无素材库时显示欢迎界面（3 个快速入口）；`/library/manage` 素材库管理列表；添加素材库对话框（LiveRec / 文件夹 / WebDAV / OpenList，后两者只读提示）。
+- `App.vue`：多库状态（`libraries`、`activeLibraryId`）；启动时加载素材库；侧边栏按库列出，显示扫描中/错误状态点，提供「+ 添加素材库」；没有素材库时保留原 LiveRec 入口。
+- `navigation.ts` 新增 `/library/folders`、`/library/unpublished`、`/library/manage`；`types.ts` 新增 `LibraryRoot`、`AssetV2` 等类型。
+
+## 工程修正
+
+- Release workflow 的 tag 校验收紧（09009c5）：只接受 `vX.Y.Z`、`vX.Y.Z-preview.N`、`vX.Y.Z-rc.N`，其他 tag 直接报错，不再误发版。
+- `build-portable.ps1` 改为读取 `CARGO_TARGET_DIR`，版本号正则支持预发布后缀。此前在设置了该变量的环境（Cursor 沙箱）里，脚本从 `app/target/release` 复制到的是旧 exe：**本地 `dist/` 下的 v0.6.0 / v0.7.0 便携包实际装的是 v0.5.0 程序**。GitHub Actions 发布的 v0.7.0 不受影响。
+- 对新增 Rust 代码执行 `cargo fmt`，避免 Build foundation 的格式检查失败。
+
+## 后端改动（df48dd6）
 
 ### 数据库 schema 迁移（v1 → v2）
 
@@ -59,10 +73,16 @@
 
 新增 `docs/MEDIA-LIBRARY-EXPANSION.md`（424 行）：完整的产品设计文档，包含多库架构、元数据方案、API 设计、扫描器逻辑、视图设计、首次启动重设计、迁移路径、5 个已决策事项。
 
+## 验证
+
+`cargo fmt --check`、`cargo check --workspace --all-targets`、Rust 49 项测试、前端测试、`vue-tsc` 与 Vite 生产构建通过。本机 Windows 便携包重新构建后，确认 `u2bup-server.exe` 报告版本并提供 `/api/libraries`；已有 `.local` 数据库首次启动时迁移到 schema v2，原 163 条 LiveRec 素材仍可读取。
+
+已知问题：尚未添加任何素材库时，所有素材库页面都显示欢迎界面；侧边栏的旧 LiveRec 入口跳到「设置 → 环境」，所以升级用户需先添加一个素材库，才能在素材库页面看到原有 LiveRec 素材。待 `--library` 自动建库与旧数据迁移完成后解决。
+
 ## 尚未实现（本 milestone 剩余）
 
-- [ ] 前端：欢迎界面（首次无库时展示）
-- [ ] 前端：侧边栏多库切换
+- [x] 前端：欢迎界面（首次无库时展示）
+- [x] 前端：侧边栏多库切换
 - [ ] 前端：素材发布元数据编辑面板
 - [ ] 前端：平铺列表视图（跨库）
 - [ ] `--library` 参数的"添加一个 liverec 库"快捷逻辑

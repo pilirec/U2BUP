@@ -102,8 +102,7 @@ impl Db {
 
     pub fn list<T: DeserializeOwned>(&self, kind: &str) -> Result<Vec<T>> {
         let c = self.0.lock().unwrap();
-        let mut q =
-            c.prepare("SELECT json FROM documents WHERE kind=?1 ORDER BY rowid DESC")?;
+        let mut q = c.prepare("SELECT json FROM documents WHERE kind=?1 ORDER BY rowid DESC")?;
         let rows = q.query_map([kind], |r| r.get::<_, String>(0))?;
         rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect()
     }
@@ -192,9 +191,14 @@ impl Db {
             .optional()?;
         row.map(|(id, lib, path, hash, title, tags, ms, sz, json)| {
             Ok(crate::model::AssetRecord {
-                id, library_id: lib, source_path: path, content_hash: hash,
-                pub_title: title, custom_tags_json: tags,
-                modified_ms: ms as u64, file_size: sz as u64,
+                id,
+                library_id: lib,
+                source_path: path,
+                content_hash: hash,
+                pub_title: title,
+                custom_tags_json: tags,
+                modified_ms: ms as u64,
+                file_size: sz as u64,
                 asset: serde_json::from_str(&json)?,
             })
         })
@@ -215,16 +219,29 @@ impl Db {
              LIMIT ?2 OFFSET ?3",
         )?;
         let rows = q.query_map(params![library_id, limit as i64, offset as i64], |r| {
-            Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,
-                r.get::<_,Option<String>>(3)?,r.get::<_,Option<String>>(4)?,r.get::<_,Option<String>>(5)?,
-                r.get::<_,i64>(6)?,r.get::<_,i64>(7)?,r.get::<_,String>(8)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, i64>(6)?,
+                r.get::<_, i64>(7)?,
+                r.get::<_, String>(8)?,
+            ))
         })?;
         rows.map(|r| {
             let (id, lib, path, hash, title, tags, ms, sz, json) = r?;
             Ok(crate::model::AssetRecord {
-                id, library_id: lib, source_path: path, content_hash: hash,
-                pub_title: title, custom_tags_json: tags,
-                modified_ms: ms as u64, file_size: sz as u64,
+                id,
+                library_id: lib,
+                source_path: path,
+                content_hash: hash,
+                pub_title: title,
+                custom_tags_json: tags,
+                modified_ms: ms as u64,
+                file_size: sz as u64,
                 asset: serde_json::from_str(&json)?,
             })
         })
@@ -263,11 +280,16 @@ impl Db {
                 |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?)),
             )
             .optional()?;
-        row.map(|(id,lib,path,hash,title,tags,ms,sz,json)| {
+        row.map(|(id, lib, path, hash, title, tags, ms, sz, json)| {
             Ok(crate::model::AssetRecord {
-                id, library_id: lib, source_path: path, content_hash: Some(hash.unwrap_or_default()),
-                pub_title: title, custom_tags_json: tags,
-                modified_ms: ms as u64, file_size: sz as u64,
+                id,
+                library_id: lib,
+                source_path: path,
+                content_hash: Some(hash.unwrap_or_default()),
+                pub_title: title,
+                custom_tags_json: tags,
+                modified_ms: ms as u64,
+                file_size: sz as u64,
                 asset: serde_json::from_str(&json)?,
             })
         })
@@ -276,11 +298,11 @@ impl Db {
 
     /// Total asset count across all libraries (for migration progress).
     pub fn asset_total_count(&self) -> Result<usize> {
-        let n: i64 = self.0.lock().unwrap().query_row(
-            "SELECT COUNT(*) FROM assets_v2",
-            [],
-            |r| r.get(0),
-        )?;
+        let n: i64 =
+            self.0
+                .lock()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM assets_v2", [], |r| r.get(0))?;
         Ok(n as usize)
     }
 

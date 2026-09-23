@@ -2,7 +2,9 @@
 
 日期：2026-09-21。基线：v0.3.1 / 当前 main。状态：待实施的产品与工程规划，文中的阶段编号不是已发布版本。
 
-> **2026-09-23 更新**：产品方向已扩展为通用视频素材库工作台（见 [MEDIA-LIBRARY-EXPANSION.md](MEDIA-LIBRARY-EXPANSION.md)）。多素材库基础架构 Phase 1 后端已实现并测试通过（`db.rs` schema v2 迁移、`library.rs` 多库 API、`model.rs` AssetV2/LibraryRoot）；前端欢迎界面与侧边栏多库切换待实施。
+> **2026-09-23 更新**：产品方向已扩展为通用视频素材库工作台（见 [MEDIA-LIBRARY-EXPANSION.md](MEDIA-LIBRARY-EXPANSION.md)）。多素材库基础架构 Phase 1 后端已实现并测试通过（`db.rs` schema v2 迁移、`library.rs` 多库 API、`model.rs` AssetV2/LibraryRoot），前端欢迎界面与侧边栏多库切换已完成，以 `v0.8.0-preview.1` 预览发布；发布元数据面板、跨库列表与旧数据迁移待实施。
+>
+> 版本编号以 MEDIA-LIBRARY-EXPANSION 第 9 节为准：v0.8 = 多素材库基础，v0.9 = LLM 集成与发布平台扩展。下文第 6 节的阶段版本号是 09-21 的原始建议，E 阶段起顺延。
 
 ## 1. 产品方向与已确认事实
 
