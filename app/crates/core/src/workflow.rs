@@ -178,11 +178,20 @@ pub(crate) fn router() -> Router<Arc<AppState>> {
         .route("/api/workflows/runs/{id}/apply", post(apply))
         .route("/api/workflows/playlists/sync", post(sync_playlists))
         .route("/api/workflows/thumbnails/{id}", get(thumbnail_image))
-        .route("/api/workflows/modules", get(list_modules).post(save_modules))
+        .route(
+            "/api/workflows/modules",
+            get(list_modules).post(save_modules),
+        )
         .route("/api/workflows/modules/install", post(install_module))
         .route("/api/workflows/modules/{id}/enable", post(enable_module))
-        .route("/api/workflows/modules/{id}/uninstall", post(uninstall_module))
-        .route("/api/workflows/identity-ledger", get(list_identity).post(save_identity))
+        .route(
+            "/api/workflows/modules/{id}/uninstall",
+            post(uninstall_module),
+        )
+        .route(
+            "/api/workflows/identity-ledger",
+            get(list_identity).post(save_identity),
+        )
 }
 
 pub(crate) fn recover(db: &Db) -> Result<()> {
@@ -252,10 +261,7 @@ async fn save_modules(
     State(s): State<Arc<AppState>>,
     Json(body): Json<ModuleStateBody>,
 ) -> HttpResult<Value> {
-    let modules = body
-        .modules
-        .as_array()
-        .context("modules 必须为数组")?;
+    let modules = body.modules.as_array().context("modules 必须为数组")?;
     if modules.len() > 200 {
         bail!("本地模块过多");
     }
@@ -353,9 +359,7 @@ async fn enable_module(
         }
         state["disabledBuiltinIds"] = Value::Array(disabled);
     } else {
-        let modules = state["modules"]
-            .as_array_mut()
-            .context("模块注册表损坏")?;
+        let modules = state["modules"].as_array_mut().context("模块注册表损坏")?;
         let module = modules
             .iter_mut()
             .find(|m| m["id"] == id)
@@ -374,9 +378,7 @@ async fn uninstall_module(
         bail!("不能卸载内置模块");
     }
     let mut state = module_state(&s.db)?;
-    let modules = state["modules"]
-        .as_array_mut()
-        .context("模块注册表损坏")?;
+    let modules = state["modules"].as_array_mut().context("模块注册表损坏")?;
     let before = modules.len();
     modules.retain(|m| m["id"] != id);
     if modules.len() == before {
@@ -393,8 +395,7 @@ struct IdentityLedgerBody {
 
 async fn list_identity(State(s): State<Arc<AppState>>) -> HttpResult<Value> {
     Ok(Json(
-        s.db
-            .get::<Value>("workflow-identity-ledger", "default")?
+        s.db.get::<Value>("workflow-identity-ledger", "default")?
             .unwrap_or_else(|| json!({"items":[]})),
     ))
 }
@@ -421,8 +422,7 @@ async fn save_identity(
         }
     }
     let saved = json!({"items": body.items, "updatedAt": now()});
-    s.db
-        .put("workflow-identity-ledger", "default", &saved)?;
+    s.db.put("workflow-identity-ledger", "default", &saved)?;
     Ok(Json(saved))
 }
 fn validate_graph(name: &str, graph: &Value) -> Result<()> {
