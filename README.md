@@ -98,6 +98,17 @@ cd app
 
 Details: [`app/README.md`](app/README.md). License notices for bundled tools: [`app/THIRD-PARTY-NOTICES.md`](app/THIRD-PARTY-NOTICES.md).
 
+### GitHub Releases (tag-triggered)
+
+CI does **not** publish a Release on every commit. Push a version tag:
+
+| Tag | Channel | Artifacts |
+| --- | --- | --- |
+| `v0.7.0-preview.1`, `v0.7.0-rc.1` | **Preview (A)** — Pre-release | Unbundled `desktop`+`server` zips per OS (**no FFmpeg**) |
+| `v0.7.0` | **Stable (B)** — full Release | Windows portable zip **with** FFmpeg; macOS **DMG** (unsigned until notarization); Linux **AppImage** + `.deb` |
+
+Workflow: [`.github/workflows/release.yml`](.github/workflows/release.yml). Media pins: [`app/release/media/`](app/release/media/).
+
 ---
 
 ## Architecture (short)
@@ -134,6 +145,8 @@ Priorities may change; unchecked items are **not** release promises.
 | [`docs/WORKFLOW-INTENT-SCHEMA.md`](docs/WORKFLOW-INTENT-SCHEMA.md) | Host Intent kinds |
 | [`docs/CHANNEL-WORKFLOW-DESIGN.md`](docs/CHANNEL-WORKFLOW-DESIGN.md) | Channel batch design + implementation status |
 | [`docs/BUILD-STATUS.md`](docs/BUILD-STATUS.md) | Per-version verification log |
+| [`app/release/media/`](app/release/media/) | Reviewed FFmpeg pins for stable release CI |
+| [`docs/CROSS-PLATFORM.md`](docs/CROSS-PLATFORM.md) | Multi-platform CI / packaging boundaries |
 | [`docs/DEVELOPMENT-ROADMAP.md`](docs/DEVELOPMENT-ROADMAP.md) | Next-stage plan |
 | [`docs/PRODUCT-ARCHITECTURE.md`](docs/PRODUCT-ARCHITECTURE.md) | Original product architecture draft |
 | [`app/README.md`](app/README.md) | App-local runbook |

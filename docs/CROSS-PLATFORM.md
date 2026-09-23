@@ -11,9 +11,18 @@
 
 ## CI
 
-`.github/workflows/build.yml` 在 app 改动和手动触发时运行。固定 Rust 1.98.1 / Node 24.21.0，依次构建 WebUI、测试选择与路由逻辑、检查 Rust 格式、编译与测试核心/桌面，保存原生可执行文件。CI 的 `unbundled-*` 工件不包含 FFmpeg，不应作为最终桌面发行包下载后直接使用。
+`.github/workflows/build.yml` runs on `app/**` changes and manual dispatch. Fixed Rust 1.98.1 / Node 24.21.0: WebUI, tests, Rust fmt/check/test, release binaries, headless smoke. Artifacts are `unbundled-*` (no FFmpeg) and must not be treated as final desktop installers.
 
-Node 版本依据 [官方归档](https://nodejs.org/en/download/archive/v24.21.0)，runner 标签依据 [GitHub runner-images](https://github.com/actions/runner-images)。Cargo.lock 和 package-lock.json 固定应用依赖。容器基镜像目前固定版本标签，正式发行前还需锁定镜像 digest、Debian FFmpeg 包及对应源码版本。
+`.github/workflows/release.yml` runs **only on `v*` tags**:
+
+| Tag shape | Channel | Package |
+| --- | --- | --- |
+| Contains `-` (e.g. `v0.7.0-preview.1`) | Preview / Pre-release | **A** — unbundled multi-platform zips |
+| Semver only (`v0.7.0`) | Stable Release | **B** — Windows portable+FFmpeg; macOS DMG; Linux AppImage+deb |
+
+Stable media comes from reviewed pins under `app/release/media/` via `scripts/fetch-release-media.mjs` (SHA-256 verified; no floating `latest` without pin updates). macOS DMGs are **unsigned** until Apple notarization secrets are configured. Linux has no DMG; AppImage is the single-file artifact.
+
+Node version from [official archive](https://nodejs.org/en/download/archive/v24.21.0); runners from [GitHub runner-images](https://github.com/actions/runner-images). Cargo.lock and package-lock.json pin app deps. Container base images still need digest locking before calling Docker a supported product.
 
 ## 媒体组件与安装包
 
