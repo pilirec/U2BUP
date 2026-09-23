@@ -6,11 +6,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/pilirec/U2BUP/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/pilirec/U2BUP?style=social" /></a>
-  <a href="https://github.com/pilirec/U2BUP/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/pilirec/U2BUP?style=social" /></a>
-  <a href="https://github.com/pilirec/U2BUP/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/pilirec/U2BUP" /></a>
+  <a href="https://github.com/Bili-Helper/U2BUP/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Bili-Helper/U2BUP?style=social" /></a>
+  <a href="https://github.com/Bili-Helper/U2BUP/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/Bili-Helper/U2BUP?style=social" /></a>
+  <a href="https://github.com/Bili-Helper/U2BUP/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/Bili-Helper/U2BUP" /></a>
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/pilirec/U2BUP/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.6.0-brightgreen.svg" /></a>
+  <a href="https://github.com/Bili-Helper/U2BUP/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.6.0-brightgreen.svg" /></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4.svg" />
 </p>
 
@@ -172,7 +172,7 @@ Thanks to everyone who has pushed commits and design notes so far (from `git sho
 Want to help? See below—and ★ star / fork the repo if the project is useful.
 
 <p align="center">
-  <a href="https://github.com/pilirec/U2BUP/stargazers"><img alt="Star History Chart" src="https://api.star-history.com/svg?repos=pilirec/U2BUP&type=Date" width="600" /></a>
+  <a href="https://github.com/Bili-Helper/U2BUP/stargazers"><img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Bili-Helper/U2BUP&type=Date" width="600" /></a>
 </p>
 
 ---
@@ -184,7 +184,7 @@ Want to help? See below—and ★ star / fork the repo if the project is useful.
 3. Pipeline plugins: ship **declarative L1** JSON only unless maintainers accept a new builtin/Intent.  
 4. Follow GPL-3.0 for derivative distribution; preserve notices for bundled FFmpeg and dependencies.
 
-Bug reports and feature ideas → [GitHub Issues](https://github.com/pilirec/U2BUP/issues).
+Bug reports and feature ideas → [GitHub Issues](https://github.com/Bili-Helper/U2BUP/issues).
 
 ---
 
