@@ -1,4 +1,77 @@
+# v0.8（进行中）：多素材库基础架构 Phase 1
+
+日期：2026-09-23。基线：v0.7.0。状态：**后端完成，前端待实施。**
+
+## 本次改动（2026-09-23）
+
+### 数据库 schema 迁移（v1 → v2）
+
+`db.rs` 完全重写：
+
+- 新增 `libraries(id, json)` 表，存放多素材库配置
+- 新增 `assets_v2` 表（7 个索引列 + `json` 正文），替代旧的内存 `Library.assets` Vec
+- `documents` 表（v1 通用 KV 存储）原封不动保留，全部旧数据安全保留
+- 迁移在首次启动时自动执行，`PRAGMA user_version` 由 1 → 2
+
+### 数据模型扩展（model.rs）
+
+- 新增 `LibraryKind` 枚举：`liverec` / `folder` / `webdav` / `openlist`
+- 新增 `LibraryRoot` 结构：名称、类型、路径、时区、只读、启用状态、排除规则
+- 新增 `AssetV2` 结构：完整发布元数据（pub_title/pub_tags/pub_description 等，对标 YouTube），custom_tags，upload_targets，file_status
+- 新增 `fast_file_hash()`：前 1MB + 文件大小 SHA-256[:16]，用于文件移动后 relink
+
+### 多素材库 API（library.rs，全新，591 行 + 569 行测试）
+
+后端路由：
+
+| 方法 | 路径 | 功能 |
+|---|---|---|
+| GET | `/api/libraries` | 列出所有素材库 |
+| POST | `/api/libraries` | 添加素材库 |
+| GET/PUT/DELETE | `/api/libraries/{id}` | 详情 / 更新 / 删除 |
+| POST | `/api/libraries/{id}/scan` | 触发后台扫描 |
+| GET | `/api/libraries/{id}/status` | 扫描进度 |
+| GET | `/api/assets` | 跨库分页查询 |
+| GET/PUT | `/api/assets/{id}` | 详情 / 更新发布元数据 |
+
+`folder` 类型扫描器：递归 WalkDir，按扩展名过滤，支持 glob 排除规则，增量（mtime+size 判断），文件消失标记 `missing` 而非删除记录。
+
+### 启动逻辑松绑（lib.rs）
+
+- `--library` 参数变为可选：路径不存在时不报错（新安装无库情况）
+- 单库校验逻辑保留兼容性：只在 `library.root` 有值且与当前路径不同时才拒绝
+
+### 测试
+
+新增 17 个测试，全部通过；原有 32 个测试全部保持绿色（49/49）：
+
+- DB 迁移幂等性、v1 数据保留
+- LibraryRoot CRUD（创建/更新/删除/列表）
+- 路径校验（不存在路径、空名称）
+- WebDAV 类型强制只读
+- folder 扫描发现视频文件、排除规则、增量
+- 禁用库不可扫描
+- 资产分页查询
+- 发布元数据更新与校验（无效 privacy、超长标题）
+- fast_file_hash 稳定性与大小敏感性
+
+### 设计文档
+
+新增 `docs/MEDIA-LIBRARY-EXPANSION.md`（424 行）：完整的产品设计文档，包含多库架构、元数据方案、API 设计、扫描器逻辑、视图设计、首次启动重设计、迁移路径、5 个已决策事项。
+
+## 尚未实现（本 milestone 剩余）
+
+- [ ] 前端：欢迎界面（首次无库时展示）
+- [ ] 前端：侧边栏多库切换
+- [ ] 前端：素材发布元数据编辑面板
+- [ ] 前端：平铺列表视图（跨库）
+- [ ] `--library` 参数的"添加一个 liverec 库"快捷逻辑
+- [ ] 旧 liverec Library.assets 数据迁移进 assets_v2
+
+---
+
 # v0.7：Tag 触发的预览 / 正式 Release CI
+
 
 日期：2026-09-22。版本号统一为 `0.7.0`。新增 [`.github/workflows/release.yml`](../.github/workflows/release.yml)：仅在推送 `v*` tag 时打包并写入 GitHub Release，日常 push/PR 仍只跑 [build.yml](../.github/workflows/build.yml) 编译检查。
 

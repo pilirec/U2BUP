@@ -4434,6 +4434,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "fs2",
+ "glob",
  "keyring",
  "mime_guess",
  "quick-xml 0.38.4",
