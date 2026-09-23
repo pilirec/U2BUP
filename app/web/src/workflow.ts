@@ -1,11 +1,36 @@
-import type { Asset } from './types';
+import type { Asset } from './types.ts';
+import type { ConfigField, HostIntent } from './modules/types.ts';
+import {
+  getModuleDefinition,
+  isModuleEnabled,
+  listEnabledCatalog,
+  registerBuiltin,
+  resolveModuleType,
+  runModuleHandler,
+} from './modules/registry.ts';
+import { hostIntentFromPlaylist, playlistIntentFromHost } from './modules/types.ts';
+
+export type { ConfigField, HostIntent };
+export {
+  applyRegistryState,
+  exportRegistryState,
+  installLocalPackage,
+  uninstallLocalModule,
+  setBuiltinEnabled,
+  setLocalModuleEnabled,
+  listAllModules,
+  listEnabledCatalog,
+  parseModulePackage,
+  exampleTagDictionaryPackage,
+} from './modules/registry.ts';
+export { isKnownIntentKind, KNOWN_INTENT_KINDS } from './modules/types.ts';
 
 /** Pure, local planning engine. No node performs network or filesystem writes. */
-export type NodeType = 'input'|'parse'|'classify'|'filter'|'metadata'|'tags'|'playlist'|'quality'|'copyright'|'thumbnail'|'ai'|'join'|'output';
+/** Short aliases (parse) and full ids (com.u2bup.builtin.parse) are both accepted. */
+export type NodeType = string;
 export interface WorkflowNode { id:string; type:NodeType; position:{x:number;y:number}; config:Record<string,unknown>; enabled:boolean; label?:string }
 export interface WorkflowEdge { id:string; source:string; target:string; port?:'out'|'yes'|'no' }
-export interface WorkflowGraph { version:1; id:string; name:string; nodes:WorkflowNode[]; edges:WorkflowEdge[] }
-export interface ConfigField { key:string; label:string; type:'text'|'textarea'|'select'|'checkbox'|'number'; options?:{value:string;label:string}[]; help?:string }
+export interface WorkflowGraph { version:1; id:string; name:string; nodes:WorkflowNode[]; edges:WorkflowEdge[]; moduleApi?:1 }
 export interface NodeDefinition { type:NodeType; label:string; description:string; group:string; color:string; fields:ConfigField[]; defaults:Record<string,unknown> }
 export interface Evidence { field:string; value:string; source:string; confidence:'high'|'medium'|'low' }
 export interface WorkflowIssue { code:string; message:string; severity:'info'|'review'|'error'; nodeId?:string }
@@ -20,46 +45,85 @@ export interface NormalizedRecord {
 export interface IdentityBinding { platform:string; roomId:string; creator:string; playlistId?:string; aliases?:string[] }
 export interface PlaylistInfo { id:string; title?:string; description?:string; snippet?:{title?:string;description?:string}; video_ids?:string[] }
 export interface PlaylistIntent { action:'add'|'create'|'review'; playlistId?:string; identityKey:string; title:string; description:string; reason:string }
-export interface WorkflowContext { identityBindings?:IdentityBinding[]; playlists?:PlaylistInfo[]; records?:NormalizedRecord[]; copyrightReviews?:Record<string,{status:'unknown'|'clear'|'claim'|'strike';note?:string}> }
+export interface WorkflowContext {
+  identityBindings?:IdentityBinding[];
+  identityLedger?:IdentityBinding[];
+  playlists?:PlaylistInfo[];
+  records?:NormalizedRecord[];
+  copyrightReviews?:Record<string,{status:'unknown'|'clear'|'claim'|'strike';note?:string}>;
+}
 export interface NodeTrace { nodeId:string; status:'done'|'skipped'|'review'|'blocked'; message:string }
 export interface RecordChange { field:string; before:unknown; after:unknown }
-export interface RecordPreview { id:string; before:NormalizedRecord; after:NormalizedRecord; changes:RecordChange[]; trace:NodeTrace[]; playlistIntents:PlaylistIntent[]; issues:WorkflowIssue[]; status:'ready'|'review'|'unchanged'|'skipped'|'blocked' }
+export interface RecordPreview { id:string; before:NormalizedRecord; after:NormalizedRecord; changes:RecordChange[]; trace:NodeTrace[]; playlistIntents:PlaylistIntent[]; intents:HostIntent[]; issues:WorkflowIssue[]; status:'ready'|'review'|'unchanged'|'skipped'|'blocked' }
 export interface WorkflowResult { valid:boolean; errors:string[]; records:RecordPreview[]; summary:{total:number;ready:number;review:number;blocked:number;changed:number;skipped:number} }
 
 const option = (value:string,label:string) => ({value,label});
-export const NODE_CATALOG:NodeDefinition[] = [
-  {type:'input',label:'素材输入',description:'将所选频道视频和本地素材转为统一记录；按真实 ID 去重。',group:'流转',color:'#7b8cff',defaults:{kind:'all'},fields:[{key:'kind',label:'接收素材',type:'select',options:[option('all','全部所选素材'),option('youtube','仅已上传视频'),option('local','仅本地素材')]}]},
-  {type:'parse',label:'历史标题解析',description:'提取主播、平台、房间、录像日期、场次和明确分片，保留证据及不确定项。',group:'理解',color:'#8f86ff',defaults:{removeTechnical:false},fields:[{key:'removeTechnical',label:'从主题移出明确技术后缀',type:'checkbox',help:'仅处理 flv / merged / 合并 / 8 位哈希；rN_M 含义未验证，始终保留。'}]},
-  {type:'classify',label:'来源与内容标签',description:'Bilibili直播、Twitch 与 Dance / ASMR / VTuber / 游戏 / Cosplay 多标签识别。',group:'理解',color:'#bc82ec',defaults:{customKeywords:'',customLabel:''},fields:[{key:'customKeywords',label:'自定义关键词（逗号分隔）',type:'text'},{key:'customLabel',label:'命中后附加的内容标签',type:'text'}]},
-  {type:'filter',label:'条件分流',description:'符合条件走 yes，其他记录走 no；可连接汇合模块。',group:'流转',color:'#e4b45a',defaults:{field:'description',operator:'empty',value:''},fields:[{key:'field',label:'筛选字段',type:'select',options:['kind','title','description','tags','labels','privacy','platform','creator','roomId','recordedAt','categoryId','durationSeconds','copyrightStatus','defaultLanguage','defaultAudioLanguage'].map(x=>option(x,({kind:'素材类型',title:'标题',description:'描述',tags:'YouTube 标签',labels:'内容标签',privacy:'可见性',platform:'平台',creator:'主播',roomId:'房间号',recordedAt:'录像日期',categoryId:'YouTube 分类',durationSeconds:'时长（秒）',copyrightStatus:'版权复核状态',defaultLanguage:'标题语言',defaultAudioLanguage:'音频语言'} as Record<string,string>)[x]))},{key:'operator',label:'条件',type:'select',options:[option('empty','为空'),option('notEmpty','非空'),option('contains','包含'),option('equals','等于'),option('notEquals','不等于'),option('lte','小于等于'),option('gte','大于等于')]},{key:'value',label:'比较值',type:'text'}]},
-  {type:'metadata',label:'标题与描述模板',description:'以【主播】主题 分片统一命名，日期、场次、房间移入可重复更新的描述区块。',group:'修改',color:'#65b7ca',defaults:{titleTemplate:'【{主播}】{主题} {分片}',writeTitle:true,writeDescription:true,onlyEmptyDescription:false,allowUnconfirmed:false,footer:''},fields:[{key:'titleTemplate',label:'标题模板',type:'text',help:'支持 {主播}、{主题}、{分片}、{日期}、{平台}、{房间号}。'},{key:'writeTitle',label:'生成标题',type:'checkbox'},{key:'writeDescription',label:'补充结构化描述',type:'checkbox'},{key:'onlyEmptyDescription',label:'只填空描述',type:'checkbox'},{key:'allowUnconfirmed',label:'允许候选主播名进入改名预览',type:'checkbox',help:'仍需复核；默认只使用已绑定或明确括号名称。'},{key:'footer',label:'统一描述尾注',type:'textarea'}]},
-  {type:'tags',label:'标签合并去重',description:'将来源、内容分类及自定义标签合并到现有标签，保留原有标签。',group:'修改',color:'#63b9a0',defaults:{includeLabels:true,includeCreator:true,extraTags:''},fields:[{key:'includeLabels',label:'加入来源与内容标签',type:'checkbox'},{key:'includeCreator',label:'加入已识别主播名',type:'checkbox'},{key:'extraTags',label:'补充标签（逗号或换行分隔）',type:'textarea'}]},
-  {type:'playlist',label:'主播播放列表',description:'按平台 + 房间身份匹配列表；主播名作列表名，房间与来源写入列表说明。',group:'修改',color:'#d89b72',defaults:{playlistId:'',allowCreate:false,footer:''},fields:[{key:'playlistId',label:'明确绑定的播放列表 ID',type:'text',help:'留空时仅匹配有平台与完整房间证据的列表；名称相似不自动绑定。'},{key:'allowCreate',label:'找不到时提出新建列表建议',type:'checkbox'},{key:'footer',label:'列表说明尾注',type:'textarea'}]},
-  {type:'quality',label:'质量与补档对账',description:'极短视频、同标题与同场次仅进入候选核对；不判断重复上传，不删除。',group:'复核',color:'#ddbf67',defaults:{shortSeconds:10,checkDuplicates:true,checkMissing:true},fields:[{key:'shortSeconds',label:'极短视频阈值（秒）',type:'number'},{key:'checkDuplicates',label:'检查同标题 / 同来源日期候选',type:'checkbox'},{key:'checkMissing',label:'标出空描述、标签、语言',type:'checkbox'}]},
-  {type:'copyright',label:'版权与地区复核',description:'人工 claim / strike 标记进入复核；地区限制单独显示，licensedContent 不视为版权警告。',group:'复核',color:'#df868a',defaults:{reviewRegions:true,holdUnknown:false},fields:[{key:'reviewRegions',label:'有地区限制时转人工复核',type:'checkbox'},{key:'holdUnknown',label:'版权状态未知时也暂停应用',type:'checkbox',help:'普通视频接口不提供完整 Content ID 申诉或版权警告；未导入人工状态时保持未知。'}]},
-  {type:'thumbnail',label:'当前帧封面候选',description:'为已关联本地素材记录选帧时间；实际截图与应用由素材播放器和确认任务处理。',group:'修改',color:'#b383d7',defaults:{seconds:0},fields:[{key:'seconds',label:'选定帧时间（秒）',type:'number',help:'必须有本地源素材；此模块仅保存候选，不推测远端视频画面。'}]},
-  {type:'ai',label:'AI Agent 提案接口',description:'输出有来源的结构化输入与提案 schema；未接入 Agent 时不伪造理解或爆款标题。',group:'理解',color:'#ab8ef3',defaults:{task:'根据视频信息提出准确、自然的标题和内容标签，引用来源证据，不捏造视频情节。'},fields:[{key:'task',label:'Agent 任务',type:'textarea'}]},
-  {type:'join',label:'分支汇合',description:'合并实际到达的分支；同一字段的并行冲突会阻止该条应用。',group:'流转',color:'#8194a5',defaults:{},fields:[]},
-  {type:'output',label:'变更预览',description:'逐条展示前后值、节点轨迹及复核项；执行由独立确认任务负责。',group:'流转',color:'#70bfa4',defaults:{},fields:[]},
+
+const BUILTIN_SPECS: Array<NodeDefinition & { id:string; capabilities:string[] }> = [
+  {id:'com.u2bup.builtin.input',type:'input',label:'素材输入',description:'将所选频道视频和本地素材转为统一记录；按真实 ID 去重。',group:'流转',color:'#7b8cff',defaults:{kind:'all'},capabilities:['read.record'],fields:[{key:'kind',label:'接收素材',type:'select',options:[option('all','全部所选素材'),option('youtube','仅已上传视频'),option('local','仅本地素材')]}]},
+  {id:'com.u2bup.builtin.parse',type:'parse',label:'历史标题解析',description:'提取主播、平台、房间、录像日期、场次和明确分片，保留证据及不确定项。',group:'理解',color:'#8f86ff',defaults:{removeTechnical:false},capabilities:['read.record','write.fields:creator,roomId,platform,recordedAt,sessionTitle'],fields:[{key:'removeTechnical',label:'从主题移出明确技术后缀',type:'checkbox',help:'仅处理 flv / merged / 合并 / 8 位哈希；rN_M 含义未验证，始终保留。'}]},
+  {id:'com.u2bup.builtin.identity',type:'identity',label:'来源身份台账',description:'按房间号匹配已确认身份与别名；冲突进入复核，不因裸数字断定平台。',group:'理解',color:'#7aa2ff',defaults:{requireConfirmed:true},capabilities:['read.record','write.fields:creator,platform,roomId','emit.intent:identity.upsert'],fields:[{key:'requireConfirmed',label:'仅应用台账中的已确认身份',type:'checkbox',help:'关闭后仍要求房间号一致，但允许把台账创建者写入候选。'}]},
+  {id:'com.u2bup.builtin.classify',type:'classify',label:'来源与内容标签',description:'Bilibili直播、Twitch 与 Dance / ASMR / VTuber / 游戏 / Cosplay 多标签识别。',group:'理解',color:'#bc82ec',defaults:{customKeywords:'',customLabel:''},capabilities:['read.record','write.fields:labels'],fields:[{key:'customKeywords',label:'自定义关键词（逗号分隔）',type:'text'},{key:'customLabel',label:'命中后附加的内容标签',type:'text'}]},
+  {id:'com.u2bup.builtin.filter',type:'filter',label:'条件分流',description:'符合条件走 yes，其他记录走 no；可连接汇合模块。',group:'流转',color:'#e4b45a',defaults:{field:'description',operator:'empty',value:''},capabilities:['read.record'],fields:[{key:'field',label:'筛选字段',type:'select',options:['kind','title','description','tags','labels','privacy','platform','creator','roomId','recordedAt','categoryId','durationSeconds','copyrightStatus','defaultLanguage','defaultAudioLanguage'].map(x=>option(x,({kind:'素材类型',title:'标题',description:'描述',tags:'YouTube 标签',labels:'内容标签',privacy:'可见性',platform:'平台',creator:'主播',roomId:'房间号',recordedAt:'录像日期',categoryId:'YouTube 分类',durationSeconds:'时长（秒）',copyrightStatus:'版权复核状态',defaultLanguage:'标题语言',defaultAudioLanguage:'音频语言'} as Record<string,string>)[x]))},{key:'operator',label:'条件',type:'select',options:[option('empty','为空'),option('notEmpty','非空'),option('contains','包含'),option('equals','等于'),option('notEquals','不等于'),option('lte','小于等于'),option('gte','大于等于')]},{key:'value',label:'比较值',type:'text'}]},
+  {id:'com.u2bup.builtin.metadata',type:'metadata',label:'标题与描述模板',description:'以【主播】主题 分片统一命名，日期、场次、房间移入可重复更新的描述区块。',group:'修改',color:'#65b7ca',defaults:{titleTemplate:'【{主播}】{主题} {分片}',writeTitle:true,writeDescription:true,onlyEmptyDescription:false,allowUnconfirmed:false,footer:''},capabilities:['read.record','write.fields:title,description'],fields:[{key:'titleTemplate',label:'标题模板',type:'text',help:'支持 {主播}、{主题}、{分片}、{日期}、{平台}、{房间号}。'},{key:'writeTitle',label:'生成标题',type:'checkbox'},{key:'writeDescription',label:'补充结构化描述',type:'checkbox'},{key:'onlyEmptyDescription',label:'只填空描述',type:'checkbox'},{key:'allowUnconfirmed',label:'允许候选主播名进入改名预览',type:'checkbox',help:'仍需复核；默认只使用已绑定或明确括号名称。'},{key:'footer',label:'统一描述尾注',type:'textarea'}]},
+  {id:'com.u2bup.builtin.tags',type:'tags',label:'标签合并去重',description:'将来源、内容分类及自定义标签合并到现有标签，保留原有标签。',group:'修改',color:'#63b9a0',defaults:{includeLabels:true,includeCreator:true,extraTags:''},capabilities:['read.record','write.fields:tags'],fields:[{key:'includeLabels',label:'加入来源与内容标签',type:'checkbox'},{key:'includeCreator',label:'加入已识别主播名',type:'checkbox'},{key:'extraTags',label:'补充标签（逗号或换行分隔）',type:'textarea'}]},
+  {id:'com.u2bup.builtin.playlist',type:'playlist',label:'主播播放列表',description:'按平台 + 房间身份匹配列表；主播名作列表名，房间与来源写入列表说明。',group:'修改',color:'#d89b72',defaults:{playlistId:'',allowCreate:false,footer:''},capabilities:['read.record','emit.intent:playlist.add'],fields:[{key:'playlistId',label:'明确绑定的播放列表 ID',type:'text',help:'留空时仅匹配有平台与完整房间证据的列表；名称相似不自动绑定。'},{key:'allowCreate',label:'找不到时提出新建列表建议',type:'checkbox'},{key:'footer',label:'列表说明尾注',type:'textarea'}]},
+  {id:'com.u2bup.builtin.quality',type:'quality',label:'质量与补档对账',description:'极短视频、同标题与同场次仅进入候选核对；不判断重复上传，不删除。',group:'复核',color:'#ddbf67',defaults:{shortSeconds:10,checkDuplicates:true,checkMissing:true},capabilities:['read.record'],fields:[{key:'shortSeconds',label:'极短视频阈值（秒）',type:'number'},{key:'checkDuplicates',label:'检查同标题 / 同来源日期候选',type:'checkbox'},{key:'checkMissing',label:'标出空描述、标签、语言',type:'checkbox'}]},
+  {id:'com.u2bup.builtin.copyright',type:'copyright',label:'版权与地区复核',description:'人工 claim / strike 标记进入复核；地区限制单独显示，licensedContent 不视为版权警告。',group:'复核',color:'#df868a',defaults:{reviewRegions:true,holdUnknown:false},capabilities:['read.record','write.fields:copyrightStatus'],fields:[{key:'reviewRegions',label:'有地区限制时转人工复核',type:'checkbox'},{key:'holdUnknown',label:'版权状态未知时也暂停应用',type:'checkbox',help:'普通视频接口不提供完整 Content ID 申诉或版权警告；未导入人工状态时保持未知。'}]},
+  {id:'com.u2bup.builtin.thumbnail',type:'thumbnail',label:'当前帧封面候选',description:'为已关联本地素材记录选帧时间；实际截图与应用由素材播放器和确认任务处理。',group:'修改',color:'#b383d7',defaults:{seconds:0},capabilities:['read.record','emit.intent:thumbnail.setFromLocalFrame'],fields:[{key:'seconds',label:'选定帧时间（秒）',type:'number',help:'必须有本地源素材；此模块仅保存候选，不推测远端视频画面。'}]},
+  {id:'com.u2bup.builtin.ai',type:'ai',label:'AI Agent 提案接口',description:'输出有来源的结构化输入与提案 schema；未接入 Agent 时不伪造理解或爆款标题。',group:'理解',color:'#ab8ef3',defaults:{task:'根据视频信息提出准确、自然的标题和内容标签，引用来源证据，不捏造视频情节。'},capabilities:['read.record','emit.intent:agent.task'],fields:[{key:'task',label:'Agent 任务',type:'textarea'}]},
+  {id:'com.u2bup.builtin.join',type:'join',label:'分支汇合',description:'合并实际到达的分支；同一字段的并行冲突会阻止该条应用。',group:'流转',color:'#8194a5',defaults:{},capabilities:['read.record'],fields:[]},
+  {id:'com.u2bup.builtin.output',type:'output',label:'变更预览',description:'逐条展示前后值、节点轨迹及复核项；执行由独立确认任务负责。',group:'流转',color:'#70bfa4',defaults:{},capabilities:['read.record'],fields:[]},
 ];
 
+function catalogFromRegistry(): NodeDefinition[] {
+  return listEnabledCatalog().map((m) => ({
+    type: m.type,
+    label: m.label,
+    description: m.description,
+    group: m.group,
+    color: m.color,
+    fields: m.fields,
+    defaults: m.defaults,
+  }));
+}
+
+/** Enabled modules for the canvas palette (registry-driven). */
+export function getNodeCatalog(): NodeDefinition[] {
+  return catalogFromRegistry();
+}
+
+/** @deprecated Use getNodeCatalog(); kept as a live view for existing imports. */
+export const NODE_CATALOG: NodeDefinition[] = new Proxy([] as NodeDefinition[], {
+  get(_target, prop, receiver) {
+    const list = catalogFromRegistry();
+    if (prop === 'length') return list.length;
+    if (prop === Symbol.iterator) return list[Symbol.iterator].bind(list);
+    if (typeof prop === 'string' && /^\d+$/.test(prop)) return list[Number(prop)];
+    const value = Reflect.get(list, prop, receiver);
+    return typeof value === 'function' ? value.bind(list) : value;
+  },
+});
+
 export const WORKFLOW_TEMPLATES = [
-  {key:'standard',name:'历史视频标准化',description:'解析 → 来源分类 → 标题描述 → 标签 → 播放列表 → 复核'},
+  {key:'standard',name:'历史视频标准化',description:'解析 → 身份台账 → 来源分类 → 标题描述 → 标签 → 播放列表 → 复核'},
   {key:'fill-empty',name:'空描述与标签补全',description:'仅为空描述的记录生成描述与标签，其他记录保持原状'},
   {key:'library',name:'素材入库与补档核对',description:'统一理解本地与云端素材，核对场次候选并预留封面'},
   {key:'copyright',name:'版权与地区例外',description:'检查版权人工标记、地区限制与极短素材'},
 ];
 
 export function createNode(type:NodeType,index=0):WorkflowNode {
-  const definition=NODE_CATALOG.find(n=>n.type===type);
+  const definition=getModuleDefinition(type)??BUILTIN_SPECS.find(s=>s.type===type||s.id===type);
   if(!definition) throw new Error(`未知模块：${type}`);
-  return {id:`${type}-${index}`,type,enabled:true,position:{x:80+(index%4)*290,y:90+Math.floor(index/4)*170},config:clone(definition.defaults)};
+  const shortType=('type' in definition?definition.type:getModuleDefinition(type)?.type)||type;
+  const defaults='defaults' in definition?definition.defaults:{};
+  return {id:`${shortType}-${index}`,type:shortType,enabled:true,position:{x:80+(index%4)*290,y:90+Math.floor(index/4)*170},config:clone(defaults)};
 }
 
 export function createTemplate(key='standard'):WorkflowGraph {
   const template=WORKFLOW_TEMPLATES.find(t=>t.key===key);
   if(!template) throw new Error(`未知管线模板：${key}`);
-  const types:NodeType[]=key==='standard'?['input','parse','classify','metadata','tags','playlist','quality','copyright','output']:key==='fill-empty'?['input','parse','classify','filter','metadata','tags','join','output']:key==='library'?['input','parse','classify','quality','thumbnail','output']:['input','copyright','quality','output'];
+  const types:NodeType[]=key==='standard'?['input','parse','identity','classify','metadata','tags','playlist','quality','copyright','output']:key==='fill-empty'?['input','parse','classify','filter','metadata','tags','join','output']:key==='library'?['input','parse','identity','classify','quality','thumbnail','output']:['input','copyright','quality','output'];
   const nodes=types.map((type,index)=>createNode(type,index));
   const edges:WorkflowEdge[]=nodes.slice(1).map((node,index)=>({id:`edge-${index}`,source:nodes[index].id,target:node.id,port:nodes[index].type==='filter'?'yes':'out'}));
   if(key==='fill-empty') {
@@ -67,7 +131,7 @@ export function createTemplate(key='standard'):WorkflowGraph {
     edges.push({id:'edge-no',source:nodes[3].id,target:nodes[6].id,port:'no'});
     nodes[4].position={x:1240,y:90}; nodes[5].position={x:1530,y:90}; nodes[6].position={x:1820,y:190}; nodes[7].position={x:2110,y:190};
   }
-  return {version:1,id:`workflow-${key}`,name:template.name,nodes,edges};
+  return {version:1,moduleApi:1,id:`workflow-${key}`,name:template.name,nodes,edges};
 }
 
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value));
@@ -124,12 +188,14 @@ export function validateGraph(input:unknown):{valid:boolean;errors:string[];orde
   if(typeof graph.id!=='string'||!graph.id.trim()||typeof graph.name!=='string'||!graph.name.trim()) errors.push('管线必须有 ID 和名称');
   if(!Array.isArray(graph.nodes)||!Array.isArray(graph.edges)) return {valid:false,errors:[...errors,'nodes 和 edges 必须为数组'],order:[]};
   if(graph.nodes.length>200||graph.edges.length>600) return {valid:false,errors:[...errors,'管线超过 200 个模块或 600 条连线'],order:[]};
+  ensureBuiltinsRegistered();
   const nodes=graph.nodes as WorkflowNode[],edges=graph.edges as WorkflowEdge[],ids=new Set<string>(),edgeIds=new Set<string>();
   for(const node of nodes) {
     if(!node||typeof node.id!=='string'||!node.id||ids.has(node.id)) { errors.push('模块 ID 缺失或重复'); continue; }
     ids.add(node.id);
-    const definition=NODE_CATALOG.find(d=>d.type===node.type);
+    const definition=lookupDefinition(node.type);
     if(!definition) errors.push(`未知模块类型：${node.type}`);
+    else if(!isModuleEnabled(node.type)) errors.push(`模块已禁用：${node.type}`);
     if(typeof node.enabled!=='boolean') errors.push(`${node.id} 缺少 enabled 布尔值`);
     if(!node.position||!Number.isFinite(node.position.x)||!Number.isFinite(node.position.y)) errors.push(`${node.id} 的位置无效`);
     if(!node.config||typeof node.config!=='object'||Array.isArray(node.config)) errors.push(`${node.id} 的配置无效`);
@@ -150,14 +216,14 @@ export function validateGraph(input:unknown):{valid:boolean;errors:string[];orde
     if(!ids.has(edge.source)||!ids.has(edge.target)) {errors.push(`${edge.id} 指向不存在的模块`);continue;}
     if(edge.port!==undefined&&!['out','yes','no'].includes(edge.port)) errors.push(`${edge.id} 的输出端口无效`);
     const source=byId.get(edge.source)!;
-    if(source.type==='filter'&&!['yes','no'].includes(edge.port||'')) errors.push(`${edge.id} 必须选择条件分流的 yes 或 no 端口`);
-    if(source.type!=='filter'&&edge.port&&edge.port!=='out') errors.push(`${edge.id} 的源模块不支持条件端口`);
+    if(canonicalType(source.type)==='filter'&&!['yes','no'].includes(edge.port||'')) errors.push(`${edge.id} 必须选择条件分流的 yes 或 no 端口`);
+    if(canonicalType(source.type)!=='filter'&&edge.port&&edge.port!=='out') errors.push(`${edge.id} 的源模块不支持条件端口`);
     incoming.get(edge.target)!.push(edge); outgoing.get(edge.source)!.push(edge);
   }
-  const inputs=nodes.filter(n=>n?.type==='input'),outputs=nodes.filter(n=>n?.type==='output');
+  const inputs=nodes.filter(n=>canonicalType(n?.type)==='input'),outputs=nodes.filter(n=>canonicalType(n?.type)==='output');
   if(inputs.length!==1||outputs.length!==1) errors.push('管线需要且只能有一个素材输入和一个变更预览');
   if(inputs.some(n=>incoming.get(n.id)?.length)||outputs.some(n=>outgoing.get(n.id)?.length)) errors.push('输入模块不能有入线，预览模块不能有出线');
-  for(const node of nodes.filter(Boolean)) if((incoming.get(node.id)?.length||0)>1&&!['join','output'].includes(node.type)) errors.push(`${node.id} 有多个入口，请先用分支汇合模块合并`);
+  for(const node of nodes.filter(Boolean)) if((incoming.get(node.id)?.length||0)>1&&!['join','output'].includes(canonicalType(node.type))) errors.push(`${node.id} 有多个入口，请先用分支汇合模块合并`);
   const degree=new Map([...incoming].map(([id,list])=>[id,list.length])),queue=[...degree].filter(([,n])=>n===0).map(([id])=>id).sort(),order:string[]=[];
   while(queue.length) {const id=queue.shift()!;order.push(id);for(const edge of outgoing.get(id)||[]){degree.set(edge.target,degree.get(edge.target)!-1);if(degree.get(edge.target)===0){queue.push(edge.target);queue.sort();}}}
   if(order.length!==ids.size) errors.push('管线存在循环连线');
@@ -166,10 +232,23 @@ export function validateGraph(input:unknown):{valid:boolean;errors:string[];orde
     visit(inputs[0].id,outgoing);for(const id of ids) if(!reachable.has(id)) errors.push(`${id} 未连接到素材输入`);
     reachable.clear();visit(outputs[0].id,incoming,true);for(const id of ids)if(!reachable.has(id))errors.push(`${id} 无法到达变更预览`);
     const ancestors=new Map<string,Set<string>>();for(const id of order){const set=new Set<string>();for(const edge of incoming.get(id)||[]){set.add(edge.source);for(const a of ancestors.get(edge.source)||[])set.add(a);}ancestors.set(id,set);}
-    // Modules that consume parsed identities must be reachable after a parser on every path.
-    const parsed=new Map<string,boolean>();for(const id of order){const node=byId.get(id)!;const ins=incoming.get(id)||[];const before=ins.length>0&&ins.every(e=>parsed.get(e.source));parsed.set(id,(node.type==='parse'&&node.enabled)||before);if(node.enabled&&['metadata','playlist'].includes(node.type)&&!before)errors.push(`${id} 需要先经过已启用的历史标题解析模块`);}
+    const parsed=new Map<string,boolean>();for(const id of order){const node=byId.get(id)!;const ins=incoming.get(id)||[];const before=ins.length>0&&ins.every(e=>parsed.get(e.source));parsed.set(id,(canonicalType(node.type)==='parse'&&node.enabled)||before);if(node.enabled&&['metadata','playlist'].includes(canonicalType(node.type))&&!before)errors.push(`${id} 需要先经过已启用的历史标题解析模块`);}
   }
   return {valid:errors.length===0,errors:unique(errors),order};
+}
+
+function lookupDefinition(type:string):NodeDefinition|undefined {
+  const fromRegistry=getModuleDefinition(type);
+  if(fromRegistry) return {type:fromRegistry.type,label:fromRegistry.label,description:fromRegistry.description,group:fromRegistry.group,color:fromRegistry.color,fields:fromRegistry.fields,defaults:fromRegistry.defaults};
+  const builtin=BUILTIN_SPECS.find(s=>s.type===type||s.id===type);
+  return builtin?{type:builtin.type,label:builtin.label,description:builtin.description,group:builtin.group,color:builtin.color,fields:builtin.fields,defaults:builtin.defaults}:undefined;
+}
+
+function canonicalType(type:string):string {
+  const resolved=resolveModuleType(type);
+  if(resolved?.alias) return resolved.alias;
+  const builtin=BUILTIN_SPECS.find(s=>s.id===type||s.type===type);
+  return builtin?.type??type;
 }
 
 function addIssue(record:NormalizedRecord,code:string,message:string,severity:WorkflowIssue['severity']='review',nodeId?:string) {
@@ -261,6 +340,26 @@ function classify(record:NormalizedRecord,config:Record<string,unknown>) {
   // categoryId 20 is not evidence that all of these recordings contain games.
 }
 
+function applyIdentity(record:NormalizedRecord,config:Record<string,unknown>,context:WorkflowContext,nodeId:string):HostIntent[] {
+  const ledger=[...(context.identityLedger||[]),...(context.identityBindings||[])];
+  if(!record.roomId){addIssue(record,'identity_room_missing','没有房间号，无法匹配来源身份台账','info',nodeId);return[];}
+  const matches=ledger.filter(b=>b.roomId===record.roomId&&(record.platform==='unknown'||!b.platform||b.platform===record.platform||b.platform==='unknown'));
+  const identities=unique(matches.map(b=>`${b.platform||'unknown'}:${b.roomId}:${b.creator}`));
+  if(!matches.length){addIssue(record,'identity_unmatched','台账中没有匹配此房间号的来源身份','info',nodeId);return[];}
+  if(identities.length>1){addIssue(record,'identity_conflict','同一房间命中多个来源身份，需要确认平台与主播','review',nodeId);return[];}
+  const binding=matches[0]!;
+  const requireConfirmed=config.requireConfirmed!==false;
+  if(requireConfirmed&&record.platform==='unknown'&&!binding.platform){addIssue(record,'identity_platform_unknown','台账条目缺少平台，未自动写入','review',nodeId);return[];}
+  if(binding.platform&&binding.platform!=='unknown'){record.platform=binding.platform;evidence(record,'platform',binding.platform,'来源身份台账','high');}
+  if(binding.creator){
+    const manuallyConfirmed=record.evidence.some(e=>e.field==='creator'&&e.value===record.creator&&e.confidence==='high'&&e.source.startsWith('人工校正'));
+    if(!manuallyConfirmed){record.creator=binding.creator;evidence(record,'creator',binding.creator,'来源身份台账','high');}
+  }
+  if(binding.playlistId&&!record.playlistId)record.playlistId=binding.playlistId;
+  for(const alias of binding.aliases||[])evidence(record,'creatorAlias',alias,'来源身份台账别名','medium');
+  return[{kind:'identity.upsert',platform:record.platform,roomId:record.roomId,creator:record.creator,aliases:binding.aliases,playlistId:binding.playlistId,reason:'台账匹配后的来源身份'}];
+}
+
 function metadata(record:NormalizedRecord,config:Record<string,unknown>,nodeId:string) {
   const low=record.evidence.some(e=>e.field==='creator'&&e.value===record.creator&&e.confidence==='low')&&!record.evidence.some(e=>e.field==='creator'&&e.value===record.creator&&e.confidence!=='low');
   const conflict=record.issues.some(i=>['creator_conflict','identity_conflict','room_conflict','platform_conflict'].includes(i.code));
@@ -325,10 +424,11 @@ function quality(record:NormalizedRecord,config:Record<string,unknown>,records:N
 
 const changedFields=['title','description','tags','privacy','categoryId','creator','roomId','platform','recordedAt','recordedEnd','sessionTitle','part','sourceUrl','originalTitle','labels','technicalFields','defaultLanguage','defaultAudioLanguage','copyrightStatus','thumbnailCandidate','aiProposal'] as const;
 interface Write {nodeId:string;value:unknown}
-interface State {record:NormalizedRecord;writes:Map<string,Write[]>;intents:PlaylistIntent[];route?:'yes'|'no';blocked:boolean}
-function forkState(state:State):State {return{record:clone(state.record),writes:new Map([...state.writes].map(([k,v])=>[k,clone(v)])),intents:clone(state.intents),blocked:state.blocked};}
+interface State {record:NormalizedRecord;writes:Map<string,Write[]>;intents:PlaylistIntent[];hostIntents:HostIntent[];route?:'yes'|'no';blocked:boolean}
+function forkState(state:State):State {return{record:clone(state.record),writes:new Map([...state.writes].map(([k,v])=>[k,clone(v)])),intents:clone(state.intents),hostIntents:clone(state.hostIntents),blocked:state.blocked};}
 
 export function runWorkflow(graph:WorkflowGraph,records:NormalizedRecord[],context:WorkflowContext={}):WorkflowResult {
+  ensureBuiltinsRegistered();
   const validation=validateGraph(graph),summary={total:0,ready:0,review:0,blocked:0,changed:0,skipped:0};
   if(!validation.valid)return{valid:false,errors:validation.errors,records:[],summary};
   const byId=new Map(graph.nodes.map(n=>[n.id,n])),incoming=new Map(graph.nodes.map(n=>[n.id,graph.edges.filter(e=>e.target===n.id)]));
@@ -339,20 +439,22 @@ export function runWorkflow(graph:WorkflowGraph,records:NormalizedRecord[],conte
     const before=clone(original),states=new Map<string,State|null>(),trace:NodeTrace[]=[];
     if(!before.id){addIssue(before,'record_id_missing','素材 ID 缺失，无法生成可应用变更','error');}
     for(const id of validation.order) {
-      const node=byId.get(id)!,definition=NODE_CATALOG.find(d=>d.type===node.type)!,config={...definition.defaults,...node.config};
+      const node=byId.get(id)!,definition=lookupDefinition(node.type)!,config={...definition.defaults,...node.config};
       let state:State;
-      if(node.type==='input')state={record:clone(before),writes:new Map(),intents:[],blocked:!before.id};
+      const nodeKind=canonicalType(node.type);
+      if(nodeKind==='input')state={record:clone(before),writes:new Map(),intents:[],hostIntents:[],blocked:!before.id};
       else {
         const upstream=(incoming.get(id)||[]).map(e=>{const s=states.get(e.source);return s&&(!s.route||s.route===e.port)?s:null;}).filter((s):s is State=>Boolean(s));
         if(!upstream.length){states.set(id,null);trace.push({nodeId:id,status:'skipped',message:'当前记录未到达此分支'});continue;}
         state=forkState(upstream[0]);
         if(upstream.length>1) {
-          state.record=clone(before);state.writes=new Map();state.intents=[];state.blocked=upstream.some(s=>s.blocked);
+          state.record=clone(before);state.writes=new Map();state.intents=[];state.hostIntents=[];state.blocked=upstream.some(s=>s.blocked);
           for(const source of upstream) {
             for(const item of source.record.evidence)evidence(state.record,item.field,item.value,item.source,item.confidence);
             for(const item of source.record.issues)addIssue(state.record,item.code,item.message,item.severity,item.nodeId);
             for(const [field,writes] of source.writes)state.writes.set(field,[...(state.writes.get(field)||[]),...writes].filter((w,i,all)=>all.findIndex(x=>x.nodeId===w.nodeId&&equal(x.value,w.value))===i));
             for(const intent of source.intents)if(!state.intents.some(i=>equal(i,intent)))state.intents.push(clone(intent));
+            for(const intent of source.hostIntents)if(!state.hostIntents.some(i=>equal(i,intent)))state.hostIntents.push(clone(intent));
           }
           for(const [field,writes] of state.writes) {
             const last=writes.filter(w=>!writes.some(other=>other.nodeId!==w.nodeId&&ancestors.get(other.nodeId)?.has(w.nodeId)));
@@ -364,11 +466,18 @@ export function runWorkflow(graph:WorkflowGraph,records:NormalizedRecord[],conte
       }
       if(!node.enabled){states.set(id,state);trace.push({nodeId:id,status:'skipped',message:'模块已停用，记录直接通过'});continue;}
       if(state.blocked){states.set(id,state);trace.push({nodeId:id,status:'blocked',message:'上游冲突或输入错误，暂停后续变更'});continue;}
+      if(!isModuleEnabled(node.type)){state.blocked=true;addIssue(state.record,'module_disabled',`模块已禁用：${node.type}`,'error',id);states.set(id,state);trace.push({nodeId:id,status:'blocked',message:'模块未启用'});continue;}
       const start=clone(state.record),issuesBefore=state.record.issues.length;
       let message='已完成本地预览';
-      switch(node.type) {
+      switch(nodeKind) {
         case 'input': if(config.kind!=='all'&&config.kind!==state.record.kind){states.set(id,null);trace.push({nodeId:id,status:'skipped',message:'素材类型不匹配'});continue;}message='已接收统一素材记录';break;
         case 'parse':parseRecord(state.record,config,context,id);message='已解析字段并保留来源证据';break;
+        case 'identity':{
+          const produced=applyIdentity(state.record,config,context,id);
+          state.hostIntents.push(...produced);
+          message=produced.length?'已匹配来源身份台账':'未写入新的身份绑定';
+          break;
+        }
         case 'classify':classify(state.record,config);message=state.record.labels.length?state.record.labels.join(' · '):'没有明确关键词，未强行分类';break;
         case 'filter':state.route=matches(state.record,config)?'yes':'no';message=`分流 → ${state.route}`;break;
         case 'metadata':metadata(state.record,config,id);message='标题与描述模板预览';break;
@@ -378,7 +487,12 @@ export function runWorkflow(graph:WorkflowGraph,records:NormalizedRecord[],conte
           if(length>500)addIssue(state.record,'tags_limit','合并标签超过 500 字符预算，保留原标签，请减少补充标签','review',id);else state.record.tags=tags;
           message=`标签合并后 ${state.record.tags.length} 个`;break;
         }
-        case 'playlist':state.intents.push(...playlist(state.record,config,context,id));message=state.intents.at(-1)?.reason||'已在目标播放列表中，无需重复添加';break;
+        case 'playlist':{
+          const produced=playlist(state.record,config,context,id);
+          state.intents.push(...produced);
+          state.hostIntents.push(...produced.map(hostIntentFromPlaylist));
+          message=produced.at(-1)?.reason||'已在目标播放列表中，无需重复添加';break;
+        }
         case 'quality':quality(state.record,config,comparisonRecords,id);message='已检查完整度、极短片段与补档候选';break;
         case 'copyright':{
           const review=context.copyrightReviews?.[state.record.id]||asObject(state.record.raw.copyrightReview),status=review.status;
@@ -393,23 +507,64 @@ export function runWorkflow(graph:WorkflowGraph,records:NormalizedRecord[],conte
           const seconds=Number(config.seconds);
           if(!state.record.localAssetId)addIssue(state.record,'thumbnail_source_missing','尚未关联本地源素材，不能从元信息中选取视频帧','review',id);
           else if(state.record.durationSeconds!==null&&seconds>=state.record.durationSeconds)addIssue(state.record,'thumbnail_out_of_range','选帧时间必须小于素材时长','review',id);
-          else {state.record.thumbnailCandidate={assetId:state.record.localAssetId,seconds,status:'review'};addIssue(state.record,'thumbnail_review','已保存选帧候选；需要在素材播放器确认画面，再执行封面上传','review',id);}
+          else {
+            state.record.thumbnailCandidate={assetId:state.record.localAssetId,seconds,status:'review'};
+            state.hostIntents.push({kind:'thumbnail.setFromLocalFrame',assetId:state.record.localAssetId,seconds,reason:'本地选帧封面候选'});
+            addIssue(state.record,'thumbnail_review','已保存选帧候选；需要在素材播放器确认画面，再执行封面上传','review',id);
+          }
           message='封面候选待确认';break;
         }
-        case 'ai':state.record.aiProposal={status:'awaiting_agent',task:str(config.task),input:{title:state.record.title,description:state.record.description,creator:state.record.creator,labels:state.record.labels,evidence:state.record.evidence,localAssetId:state.record.localAssetId||null},outputSchema:{type:'object',required:['title','summary','tags','evidence','confidence'],properties:{title:{type:'string',maxLength:100},summary:{type:'string'},tags:{type:'array',items:{type:'string'}},evidence:{type:'array',items:{type:'string'}},confidence:{type:'number',minimum:0,maximum:1}},additionalProperties:false}};addIssue(state.record,'agent_pending','Agent 尚未接入；仅生成结构化任务，没有生成标题或视频理解结论','review',id);message='结构化 Agent 输入已就绪，等待接入与人工审阅';break;
+        case 'ai':{
+          state.record.aiProposal={status:'awaiting_agent',task:str(config.task),input:{title:state.record.title,description:state.record.description,creator:state.record.creator,labels:state.record.labels,evidence:state.record.evidence,localAssetId:state.record.localAssetId||null},outputSchema:{type:'object',required:['title','summary','tags','evidence','confidence'],properties:{title:{type:'string',maxLength:100},summary:{type:'string'},tags:{type:'array',items:{type:'string'}},evidence:{type:'array',items:{type:'string'}},confidence:{type:'number',minimum:0,maximum:1}},additionalProperties:false}};
+          state.hostIntents.push({kind:'agent.task',task:str(config.task),input:state.record.aiProposal.input,outputSchema:state.record.aiProposal.outputSchema,reason:'Agent 尚未接入'});
+          addIssue(state.record,'agent_pending','Agent 尚未接入；仅生成结构化任务，没有生成标题或视频理解结论','review',id);message='结构化 Agent 输入已就绪，等待接入与人工审阅';break;
+        }
         case 'join':message='已合并实际到达分支；未发现字段冲突';break;
         case 'output':message='本地预览完成，尚未执行远端修改';break;
+        default: {
+          const produced=runModuleHandler(node.type,state.record as any,config,context as any,id);
+          state.hostIntents.push(...produced);
+          for(const intent of produced){const playlistShape=playlistIntentFromHost(intent);if(playlistShape&&!state.intents.some(i=>equal(i,playlistShape)))state.intents.push(playlistShape);}
+          message=produced.length?`声明式模块产出 ${produced.length} 条意图`:'声明式模块已应用';
+          break;
+        }
       }
       for(const field of changedFields)if(!equal(start[field],state.record[field]))state.writes.set(field,[...(state.writes.get(field)||[]),{nodeId:id,value:clone(state.record[field])}]);
       const newIssues=state.record.issues.slice(issuesBefore);trace.push({nodeId:id,status:newIssues.some(i=>i.severity==='error')?'blocked':newIssues.some(i=>i.severity==='review')?'review':'done',message});
       states.set(id,state);
     }
-    const output=states.get(graph.nodes.find(n=>n.type==='output')!.id);
+    const outputNode=graph.nodes.find(n=>canonicalType(n.type)==='output')!;
+    const output=states.get(outputNode.id);
     const after=output?.record||clone(before),issues=after.issues,changes:RecordChange[]=changedFields.filter(field=>!equal(before[field],after[field])).map(field=>({field,before:before[field],after:after[field]}));
-    const intents=output?.intents||[],blocked=output?.blocked||issues.some(i=>i.severity==='error');
-    const status:RecordPreview['status']=!output?'skipped':blocked?'blocked':issues.some(i=>i.severity==='review')?'review':changes.length||intents.length?'ready':'unchanged';
-    return{id:before.id,before,after,changes,trace,playlistIntents:intents,issues,status};
+    const intents=output?.intents||[],hostIntents=output?.hostIntents||[],blocked=output?.blocked||issues.some(i=>i.severity==='error');
+    const status:RecordPreview['status']=!output?'skipped':blocked?'blocked':issues.some(i=>i.severity==='review')?'review':changes.length||intents.length||hostIntents.length?'ready':'unchanged';
+    return{id:before.id,before,after,changes,trace,playlistIntents:intents,intents:hostIntents,issues,status};
   });
-  summary.total=previews.length;summary.ready=previews.filter(p=>p.status==='ready').length;summary.review=previews.filter(p=>p.status==='review').length;summary.blocked=previews.filter(p=>p.status==='blocked').length;summary.changed=previews.filter(p=>p.changes.length||p.playlistIntents.length).length;summary.skipped=previews.filter(p=>p.status==='skipped'||p.status==='unchanged').length;
+  summary.total=previews.length;summary.ready=previews.filter(p=>p.status==='ready').length;summary.review=previews.filter(p=>p.status==='review').length;summary.blocked=previews.filter(p=>p.status==='blocked').length;summary.changed=previews.filter(p=>p.changes.length||p.playlistIntents.length||p.intents.length).length;summary.skipped=previews.filter(p=>p.status==='skipped'||p.status==='unchanged').length;
   return{valid:true,errors:[],records:previews,summary};
 }
+
+let builtinsReady=false;
+function ensureBuiltinsRegistered() {
+  if(builtinsReady) return;
+  for(const spec of BUILTIN_SPECS) {
+    registerBuiltin({
+      id:spec.id,
+      version:'0.6.0',
+      apiVersion:1,
+      kind:'builtin',
+      alias:spec.type,
+      label:spec.label,
+      description:spec.description,
+      group:spec.group,
+      color:spec.color,
+      capabilities:spec.capabilities,
+      fields:spec.fields,
+      defaults:spec.defaults,
+      ports:spec.type==='filter'?['yes','no']:spec.type==='output'?[]:['out'],
+      sideEffect:'pure',
+    },()=>{ /* builtin logic stays in runWorkflow switch */ });
+  }
+  builtinsReady=true;
+}
+ensureBuiltinsRegistered();

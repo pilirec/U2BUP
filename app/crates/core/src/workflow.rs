@@ -178,6 +178,11 @@ pub(crate) fn router() -> Router<Arc<AppState>> {
         .route("/api/workflows/runs/{id}/apply", post(apply))
         .route("/api/workflows/playlists/sync", post(sync_playlists))
         .route("/api/workflows/thumbnails/{id}", get(thumbnail_image))
+        .route("/api/workflows/modules", get(list_modules).post(save_modules))
+        .route("/api/workflows/modules/install", post(install_module))
+        .route("/api/workflows/modules/{id}/enable", post(enable_module))
+        .route("/api/workflows/modules/{id}/uninstall", post(uninstall_module))
+        .route("/api/workflows/identity-ledger", get(list_identity).post(save_identity))
 }
 
 pub(crate) fn recover(db: &Db) -> Result<()> {
@@ -206,8 +211,219 @@ async fn snapshot(State(s): State<Arc<AppState>>) -> HttpResult<Value> {
         "drafts": s.db.list::<Value>("workflow-draft")?,
         "runs": s.db.list::<Run>("workflow-run")?,
         "metadata": s.db.list::<Value>("workflow-metadata")?,
-        "playlists": s.db.get::<Value>("workflow-playlists", &channel)?
+        "playlists": s.db.get::<Value>("workflow-playlists", &channel)?,
+        "modules": module_state(&s.db)?,
+        "identityLedger": s.db.get::<Value>("workflow-identity-ledger", "default")?.unwrap_or_else(|| json!({"items":[]})),
+        "knownIntentKinds": KNOWN_INTENT_KINDS,
     })))
+}
+
+const KNOWN_INTENT_KINDS: &[&str] = &[
+    "metadata.patch",
+    "playlist.add",
+    "playlist.create",
+    "playlist.review",
+    "playlist.updateSnippet",
+    "thumbnail.setFromLocalFrame",
+    "local.metadata.save",
+    "identity.upsert",
+    "agent.task",
+    "publish.settings",
+];
+
+fn module_state(db: &Db) -> Result<Value> {
+    Ok(db
+        .get::<Value>("workflow-modules", "registry")?
+        .unwrap_or_else(|| json!({"modules":[],"disabledBuiltinIds":[]})))
+}
+
+#[derive(Deserialize)]
+struct ModuleStateBody {
+    modules: Value,
+    #[serde(default, rename = "disabledBuiltinIds")]
+    disabled_builtin_ids: Value,
+}
+
+async fn list_modules(State(s): State<Arc<AppState>>) -> HttpResult<Value> {
+    Ok(Json(module_state(&s.db)?))
+}
+
+async fn save_modules(
+    State(s): State<Arc<AppState>>,
+    Json(body): Json<ModuleStateBody>,
+) -> HttpResult<Value> {
+    let modules = body
+        .modules
+        .as_array()
+        .context("modules 必须为数组")?;
+    if modules.len() > 200 {
+        bail!("本地模块过多");
+    }
+    for module in modules {
+        let id = module["id"].as_str().unwrap_or("");
+        let kind = module["kind"].as_str().unwrap_or("");
+        let api = module["apiVersion"].as_u64().unwrap_or(0);
+        if id.is_empty() || id.len() > 160 || kind != "declarative" || api != 1 {
+            bail!("仅接受 apiVersion=1 的 declarative 本地模块");
+        }
+        if id.starts_with("com.u2bup.builtin.") {
+            bail!("不能覆盖内置模块");
+        }
+    }
+    let state = json!({
+        "modules": body.modules,
+        "disabledBuiltinIds": body.disabled_builtin_ids,
+    });
+    s.db.put("workflow-modules", "registry", &state)?;
+    Ok(Json(state))
+}
+
+#[derive(Deserialize)]
+struct InstallBody {
+    package: Value,
+    #[serde(default)]
+    trusted: bool,
+}
+
+async fn install_module(
+    State(s): State<Arc<AppState>>,
+    Json(body): Json<InstallBody>,
+) -> HttpResult<Value> {
+    let package = &body.package;
+    if package["apiVersion"] != 1 || package["kind"] != "declarative" {
+        bail!("仅支持 apiVersion=1 的声明式模块包");
+    }
+    let id = package["id"]
+        .as_str()
+        .filter(|v| !v.is_empty() && v.len() <= 160)
+        .context("无效模块 ID")?
+        .to_string();
+    if id.starts_with("com.u2bup.builtin.") {
+        bail!("不能安装与内置模块冲突的 ID");
+    }
+    if package.get("manifest").is_none() || package.get("rules").is_none() {
+        bail!("模块包需要 manifest 与 rules");
+    }
+    let mut state = module_state(&s.db)?;
+    let mut modules = state["modules"].as_array().cloned().unwrap_or_default();
+    modules.retain(|m| m["id"] != id);
+    let installed = json!({
+        "id": id,
+        "version": package["version"].as_str().unwrap_or("1.0.0"),
+        "apiVersion": 1,
+        "kind": "declarative",
+        "alias": package["manifest"]["alias"].as_str().unwrap_or(&id),
+        "enabled": true,
+        "source": "local",
+        "trusted": body.trusted,
+        "installedAt": now(),
+        "manifest": package["manifest"],
+        "rules": package["rules"],
+    });
+    modules.push(installed.clone());
+    state["modules"] = Value::Array(modules);
+    s.db.put("workflow-modules", "registry", &state)?;
+    Ok(Json(json!({"installed": installed, "state": state})))
+}
+
+#[derive(Deserialize)]
+struct EnableBody {
+    enabled: bool,
+    #[serde(default)]
+    builtin: bool,
+}
+
+async fn enable_module(
+    State(s): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(body): Json<EnableBody>,
+) -> HttpResult<Value> {
+    if id.is_empty() || id.len() > 160 {
+        bail!("无效模块 ID");
+    }
+    let mut state = module_state(&s.db)?;
+    if body.builtin || id.starts_with("com.u2bup.builtin.") {
+        let mut disabled = state["disabledBuiltinIds"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        disabled.retain(|v| v.as_str() != Some(id.as_str()));
+        if !body.enabled {
+            disabled.push(json!(id));
+        }
+        state["disabledBuiltinIds"] = Value::Array(disabled);
+    } else {
+        let modules = state["modules"]
+            .as_array_mut()
+            .context("模块注册表损坏")?;
+        let module = modules
+            .iter_mut()
+            .find(|m| m["id"] == id)
+            .context("未找到本地模块")?;
+        module["enabled"] = json!(body.enabled);
+    }
+    s.db.put("workflow-modules", "registry", &state)?;
+    Ok(Json(state))
+}
+
+async fn uninstall_module(
+    State(s): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> HttpResult<Value> {
+    if id.starts_with("com.u2bup.builtin.") {
+        bail!("不能卸载内置模块");
+    }
+    let mut state = module_state(&s.db)?;
+    let modules = state["modules"]
+        .as_array_mut()
+        .context("模块注册表损坏")?;
+    let before = modules.len();
+    modules.retain(|m| m["id"] != id);
+    if modules.len() == before {
+        bail!("未找到本地模块");
+    }
+    s.db.put("workflow-modules", "registry", &state)?;
+    Ok(Json(state))
+}
+
+#[derive(Deserialize)]
+struct IdentityLedgerBody {
+    items: Vec<Value>,
+}
+
+async fn list_identity(State(s): State<Arc<AppState>>) -> HttpResult<Value> {
+    Ok(Json(
+        s.db
+            .get::<Value>("workflow-identity-ledger", "default")?
+            .unwrap_or_else(|| json!({"items":[]})),
+    ))
+}
+
+async fn save_identity(
+    State(s): State<Arc<AppState>>,
+    Json(body): Json<IdentityLedgerBody>,
+) -> HttpResult<Value> {
+    if body.items.len() > 5000 {
+        bail!("身份台账条目过多");
+    }
+    for item in &body.items {
+        let platform = item["platform"].as_str().unwrap_or("");
+        let room = item["roomId"].as_str().unwrap_or("");
+        let creator = item["creator"].as_str().unwrap_or("");
+        if platform.is_empty()
+            || room.is_empty()
+            || creator.is_empty()
+            || platform.len() > 40
+            || room.len() > 80
+            || creator.chars().count() > 120
+        {
+            bail!("身份台账需要有效的 platform、roomId、creator");
+        }
+    }
+    let saved = json!({"items": body.items, "updatedAt": now()});
+    s.db
+        .put("workflow-identity-ledger", "default", &saved)?;
+    Ok(Json(saved))
 }
 fn validate_graph(name: &str, graph: &Value) -> Result<()> {
     if name.trim().is_empty() || name.chars().count() > 160 {

@@ -1,3 +1,15 @@
+# v0.6：管线模块插件化与开发者接口
+
+日期：2026-09-22。版本号统一为 `0.6.0`。仓库根目录增加开源风格 [README](../README.md)；模块协议与 YouTube API 对照见 [WORKFLOW-MODULE-API](WORKFLOW-MODULE-API.md)。
+
+- 内置节点以 `com.u2bup.builtin.*` 注册并保留短别名；画布模块库由注册表驱动。新增 **来源身份台账** 节点与 SQLite 台账 API。
+- 支持声明式 **L1** 模块包安装/启用/卸载（`u2bup-module.json`）；预览仍为零远端副作用，写 YouTube 仅宿主 Intent。
+- 文档：Intent Schema、模块 API 手册；示例标签词典包。前端模块测试与既有 workflow 回归一并保留。
+
+验证：前端测试（含 modules）与 Rust `u2bup-core` 库测试在发版前通过；Windows 便携包目标目录 `app/dist/U2BUP-0.6.0-windows-x64/`（`U2BUP.exe` + `u2bup-server.exe`）。第三方 L2 沙箱与公网插件市场仍未开放。
+
+---
+
 # v0.5：已上传视频与素材库的可组合处理管线
 
 日期：2026-09-22。版本号已统一更新为 `0.5.0`，Windows Desktop 便携包已构建于 `app/dist/U2BUP-0.5.0-windows-x64/`，入口为 `U2BUP.exe`；同包提供独立 Web 服务及 FFmpeg/FFprobe。构建脚本现在从 Cargo workspace 版本生成包名，避免下次发版遗漏目录版本。

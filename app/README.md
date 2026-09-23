@@ -1,4 +1,4 @@
-# U2BUP 0.5.0
+# U2BUP 0.6.0
 
 Rust + Tauri + Vue 的本机录播工作台原型。第一阶段面向现有 LiveRec 历史素材，原始录像保留，成品写入独立目录。
 
@@ -57,7 +57,7 @@ biliLive-tools 实时录制集成、AI、自动弹幕时间映射、任意格式
 
 ## Windows 便携包
 
-`dist/U2BUP-0.5.0-windows-x64/` 包含桌面程序、独立 Web 服务与 `resources/ffmpeg.exe`、`resources/ffprobe.exe`。
+`dist/U2BUP-0.6.0-windows-x64/` 包含桌面程序、独立 Web 服务与 `resources/ffmpeg.exe`、`resources/ffprobe.exe`。
 
 双击 `U2BUP.exe`。首次启动选择包含主播子目录的素材根目录；点击“扫描 LiveRec”。桌面数据存放于系统应用数据目录 `io.u2bup.desktop/data`，成品在同级 `exports`，根目录选择记录在 `library-root.txt`。
 
@@ -140,4 +140,4 @@ node scripts/smoke.mjs
 
 版权 claim / strike 是人工档案，地区限制另行提示，不把 `licensedContent` 当作版权警告。申诉/静音/裁剪仍在 YouTube Studio 完成。AI 节点只导出结构化理解任务与提案 schema，尚未接入推理服务。当前每个视频的一次应用计划支持一个列表；上传继承仅涵盖准备好的标题、描述、标签、分类和公开状态，上传后的自动归列表/封面链路仍待接入。
 
-设计依据、真实样本统计和后续字幕/章节/版本归档模块见 [频道管线设计](../docs/CHANNEL-WORKFLOW-DESIGN.md)。UI 隔离验收脚本为 `scripts/workflow-ui-smoke.mjs`，通过 playwright-cli 对开发服务运行，所有 API 使用合成数据；不会修改真实频道。
+设计依据、真实样本统计和后续字幕/章节/版本归档模块见 [频道管线设计](../docs/CHANNEL-WORKFLOW-DESIGN.md)；宿主 Intent 契约见 [WORKFLOW-INTENT-SCHEMA](../docs/WORKFLOW-INTENT-SCHEMA.md)；**模块功能、YouTube API 对照与第三方开发指南**见 [WORKFLOW-MODULE-API](../docs/WORKFLOW-MODULE-API.md)。声明式模块示例：`web/src/modules/examples/tag-dictionary.mjs`。UI 隔离验收脚本为 `scripts/workflow-ui-smoke.mjs`，通过 playwright-cli 对开发服务运行，所有 API 使用合成数据；不会修改真实频道。

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import {computed,onUnmounted,ref} from 'vue';
 import {Plus,Minus,Maximize2,Trash2,Copy,Grip,ArrowRight,Undo2,Redo2,Unplug} from 'lucide-vue-next';
-import {NODE_CATALOG,createNode,validateGraph,type WorkflowGraph,type WorkflowNode,type NodeType} from './workflow';
+import {createNode,validateGraph,type WorkflowGraph,type WorkflowNode,type NodeType} from './workflow.ts';
+import {listEnabledCatalog} from './modules/registry.ts';
 
 const props=defineProps<{modelValue:WorkflowGraph}>();
 const emit=defineEmits<{'update:modelValue':[graph:WorkflowGraph]}>();
@@ -9,8 +10,8 @@ const selected=ref(''),edgeSelected=ref(''),connecting=ref<{id:string;port:'out'
 const zoom=ref(.8),offset=ref({x:32,y:60}),viewport=ref<HTMLElement>(),paletteSearch=ref('');
 const past=ref<WorkflowGraph[]>([]),future=ref<WorkflowGraph[]>([]);
 const graph=computed(()=>props.modelValue),node=computed(()=>graph.value.nodes.find(n=>n.id===selected.value));
-const definition=computed(()=>NODE_CATALOG.find(n=>n.type===node.value?.type));
-const catalog=computed(()=>NODE_CATALOG.filter(n=>(n.label+n.description).includes(paletteSearch.value)));
+const definition=computed(()=>listEnabledCatalog().find(n=>n.type===node.value?.type||n.id===node.value?.type));
+const catalog=computed(()=>listEnabledCatalog().filter(n=>(n.label+n.description).includes(paletteSearch.value)));
 const groups=computed(()=>[...new Set(catalog.value.map(n=>n.group))]);
 const validation=computed(()=>validateGraph(graph.value));
 let drag: {id?:string;x:number;y:number;ox:number;oy:number;before:WorkflowGraph}|undefined;
@@ -35,14 +36,14 @@ function arrange(){const order=validation.value.order.length?validation.value.or
 function fit(){if(!viewport.value||!graph.value.nodes.length)return;const nodes=graph.value.nodes,minX=Math.min(...nodes.map(n=>n.position.x)),minY=Math.min(...nodes.map(n=>n.position.y));const w=Math.max(...nodes.map(n=>n.position.x))+235-minX,h=Math.max(...nodes.map(n=>n.position.y))+140-minY;zoom.value=Math.max(.25,Math.min(1,(viewport.value.clientWidth-60)/w,(viewport.value.clientHeight-120)/h));offset.value={x:30-minX*zoom.value,y:70-minY*zoom.value};}
 function curve(source:string,target:string,port?:string){const a=graph.value.nodes.find(n=>n.id===source),b=graph.value.nodes.find(n=>n.id===target);if(!a||!b)return '';const x=a.position.x+235,y=a.position.y+(port==='no'?107:75),tx=b.position.x,ty=b.position.y+75;return `M ${x} ${y} C ${x+75} ${y}, ${tx-75} ${ty}, ${tx} ${ty}`;}
 function keyboard(event:KeyboardEvent){if((event.target as HTMLElement).closest('input,textarea,select'))return;if(event.key==='Escape'){connecting.value=null;selected.value='';edgeSelected.value='';}if(event.key==='Delete'){event.preventDefault();remove();}if(event.altKey&&node.value&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();alter(g=>{const n=g.nodes.find(n=>n.id===selected.value)!;n.position.x=Math.max(0,n.position.x+(event.key==='ArrowLeft'?-20:event.key==='ArrowRight'?20:0));n.position.y=Math.max(0,n.position.y+(event.key==='ArrowUp'?-20:event.key==='ArrowDown'?20:0));});}}
-function nodeDef(n:WorkflowNode){return NODE_CATALOG.find(d=>d.type===n.type);}
+function nodeDef(n:WorkflowNode){return listEnabledCatalog().find(d=>d.type===n.type||d.id===n.type);}
 defineExpose({fit});
 </script>
 
 <template>
 <div class="flow-editor" @keydown="keyboard">
   <aside class="flow-palette" aria-label="管线模块库">
-    <div class="flow-sidebar-title"><strong>模块库</strong><span>{{NODE_CATALOG.length}} 个模块</span></div>
+    <div class="flow-sidebar-title"><strong>模块库</strong><span>{{catalog.length}} 个模块</span></div>
     <input v-model="paletteSearch" aria-label="搜索管线模块" placeholder="搜索模块…"/>
     <section v-for="group in groups" :key="group"><h3>{{group}}</h3><button v-for="item in catalog.filter(n=>n.group===group)" :key="item.type" :title="item.description" @click="add(item.type)"><span class="flow-module-icon" aria-hidden="true">{{item.label.slice(0,1)}}</span><span>{{item.label}}</span><Plus :size="13"/></button></section>
     <p class="flow-palette-help">点击添加模块。连接输出圆点与目标输入圆点，决定执行顺序。</p>
