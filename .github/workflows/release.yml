@@ -99,7 +99,9 @@ jobs:
         with:
           name: preview-${{ matrix.target }}
           if-no-files-found: error
-          path: app/dist/release/${{ needs.classify.outputs.tag }}/*
+          path: |
+            app/dist/release/${{ needs.classify.outputs.tag }}/*.zip
+            app/dist/release/${{ needs.classify.outputs.tag }}/*.sha256
 
   stable:
     name: Stable B / ${{ matrix.target }}
@@ -192,7 +194,12 @@ jobs:
         with:
           name: stable-${{ matrix.target }}
           if-no-files-found: error
-          path: app/dist/release/${{ needs.classify.outputs.tag }}/*
+          path: |
+            app/dist/release/${{ needs.classify.outputs.tag }}/*.zip
+            app/dist/release/${{ needs.classify.outputs.tag }}/*.sha256
+            app/dist/release/${{ needs.classify.outputs.tag }}/*.dmg
+            app/dist/release/${{ needs.classify.outputs.tag }}/*.AppImage
+            app/dist/release/${{ needs.classify.outputs.tag }}/*.deb
 
   publish:
     name: Publish GitHub Release
