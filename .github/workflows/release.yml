@@ -31,12 +31,15 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          if [[ "$TAG" == *-* ]]; then
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(preview|rc)\.[0-9]+$ ]]; then
             echo "channel=preview" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "channel=stable" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unsupported release tag: $TAG (expected vX.Y.Z, vX.Y.Z-preview.N, or vX.Y.Z-rc.N)"
+            exit 1
           fi
 
   preview:
