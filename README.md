@@ -10,7 +10,7 @@
   <a href="https://github.com/Bili-Helper/U2BUP/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/Bili-Helper/U2BUP?style=social" /></a>
   <a href="https://github.com/Bili-Helper/U2BUP/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/Bili-Helper/U2BUP" /></a>
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/Bili-Helper/U2BUP/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.6.0-brightgreen.svg" /></a>
+  <a href="https://github.com/Bili-Helper/U2BUP/releases"><img alt="Version" src="https://img.shields.io/badge/version-v0.7.0-brightgreen.svg" /></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D4.svg" />
 </p>
 
@@ -43,7 +43,7 @@ First milestone targets existing **LiveRec** libraries. Real-time multi-platform
 
 ## Features
 
-### Available in **v0.6.0**
+### Available in **v0.7.0**
 
 | Area | What works today |
 | --- | --- |
@@ -70,7 +70,7 @@ First milestone targets existing **LiveRec** libraries. Real-time multi-platform
 ### Windows portable build (recommended locally)
 
 ```text
-app/dist/U2BUP-0.6.0-windows-x64/
+app/dist/U2BUP-0.7.0-windows-x64/
   U2BUP.exe          # desktop
   u2bup-server.exe   # headless / browser UI
   Start-Web.ps1
@@ -159,7 +159,7 @@ U2BUP stands on prior art and infrastructure. Thank you:
 
 | Project / resource | Role |
 | --- | --- |
-| [biliLive-tools](https://github.com/renmu123/biliLive-tools) | Reference for multi-platform recording UX & APIs (not bundled in v0.6) |
+| [biliLive-tools](https://github.com/renmu123/biliLive-tools) | Reference for multi-platform recording UX & APIs (not bundled in v0.7) |
 | [FFmpeg](https://ffmpeg.org/) / [Gyan builds](https://www.gyan.dev/ffmpeg/builds/) | Merge, cut, probe, thumbnails |
 | [YouTube Data API v3](https://developers.google.com/youtube/v3) | Upload & metadata management |
 | [Tauri](https://v2.tauri.app/) | Desktop shell |

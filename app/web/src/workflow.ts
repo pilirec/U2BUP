@@ -550,7 +550,7 @@ function ensureBuiltinsRegistered() {
   for(const spec of BUILTIN_SPECS) {
     registerBuiltin({
       id:spec.id,
-      version:'0.6.0',
+      version:'0.7.0',
       apiVersion:1,
       kind:'builtin',
       alias:spec.type,

@@ -1,3 +1,16 @@
+# v0.7：Tag 触发的预览 / 正式 Release CI
+
+日期：2026-09-22。版本号统一为 `0.7.0`。新增 [`.github/workflows/release.yml`](../.github/workflows/release.yml)：仅在推送 `v*` tag 时打包并写入 GitHub Release，日常 push/PR 仍只跑 [build.yml](../.github/workflows/build.yml) 编译检查。
+
+- **预览 (A)**：`vX.Y.Z-preview.N` / `vX.Y.Z-rc.N` → Pre-release；各平台 unbundled zip（desktop + server，**不含 FFmpeg**）。
+- **正式 (B)**：`vX.Y.Z` → 正式 Release；Windows 便携包含经 pin 校验的 FFmpeg；macOS **DMG**（暂未公证）；Linux **AppImage** + `.deb`。
+- 媒体 pin：[`app/release/media/`](../app/release/media/)；下载校验与入库：`app/scripts/fetch-release-media.mjs`；制品组装：`app/scripts/package-release.mjs`。
+- 文档：根 README「GitHub Releases」小节、[CROSS-PLATFORM](CROSS-PLATFORM.md) 中 A/B 边界说明。
+
+验证：本机已跑通 Windows pin 拉取与 `package-release` 预览/正式 zip；全平台正式包以本 tag 触发的 GitHub Actions 产物为准。macOS 签名/公证与 Windows Authenticode 仍未接入。
+
+---
+
 # v0.6：管线模块插件化与开发者接口
 
 日期：2026-09-22。版本号统一为 `0.6.0`。仓库根目录增加开源风格 [README](../README.md)；模块协议与 YouTube API 对照见 [WORKFLOW-MODULE-API](WORKFLOW-MODULE-API.md)。
