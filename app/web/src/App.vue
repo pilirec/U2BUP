@@ -63,14 +63,15 @@ function onKeydown(event:KeyboardEvent){const target=event.target as HTMLElement
 function showSavedPlan(id:string){const plan=data.value?.plans.find(p=>p.id===id);if(plan){chosenPlan.value=plan;navigate('/pipeline/current');}else notify('原计划不存在，请重新生成。');}
 async function refreshTasks(){try{taskSnapshot.value=await api<TaskSnapshot>('/tasks');taskError.value='';}catch(e){taskError.value=(e as Error).message;}}
 function taskAction(task:UnifiedTask,action:TaskAction){perform(async()=>{await api('/tasks/'+encodeURIComponent(task.id)+'/'+action,{});await poll();notify('任务操作已提交。');});}
+function taskBatch(tasks:UnifiedTask[],action:TaskAction){if(!tasks.length)return;perform(async()=>{const results=await Promise.allSettled(tasks.map(task=>api('/tasks/'+encodeURIComponent(task.id)+'/'+action,{})));await poll();const ok=results.filter(r=>r.status==='fulfilled').length,fail=results.length-ok;notify(fail?`已提交 ${ok} 项，${fail} 项未成功。`:`已提交 ${ok} 项任务操作。`);});}
 function uploadSubmitted(){navigate('/tasks/active');refreshTasks();}
 function sendToUpload(){perform(async()=>{
   const r=await api<{added:number;existing:number;rejected:{name:string;reason:string}[]}>('/youtube/direct',{asset_ids:[...selected.value]});
   const parts=[];
   if(r.added)parts.push(`已加入上传准备 ${r.added} 个`);
-  if(r.existing)parts.push(`${r.existing} 个已在列表中`);
+  if(r.existing)parts.push(`${r.existing} 个已在准备列表（失败上传已可重新勾选）`);
   if(r.rejected.length)parts.push(`${r.rejected.length} 个未加入：`+r.rejected.slice(0,3).map(x=>`${x.name}（${x.reason}）`).join('；')+(r.rejected.length>3?' 等':''));
-  notify(parts.join('，'));
+  notify(parts.join('，')||'没有可加入的素材');
   if(r.added+r.existing)navigate('/youtube/upload');
 });}
 
@@ -266,7 +267,7 @@ onUnmounted(()=>{window.removeEventListener('hashchange',syncRoute);window.remov
           </template>
         </template>
 
-        <TaskCenter v-else-if="view==='tasks'" :tasks="taskSnapshot.tasks" :filter="route.mode" :busy="busy" :error="taskError" :scan="taskSnapshot.scan" @action="taskAction" @plan="showSavedPlan" @refresh="refreshTasks" @copy="copy"/>
+        <TaskCenter v-else-if="view==='tasks'" :tasks="taskSnapshot.tasks" :filter="route.mode" :busy="busy" :error="taskError" :scan="taskSnapshot.scan" @action="taskAction" @batch="taskBatch" @plan="showSavedPlan" @refresh="refreshTasks" @copy="copy"/>
 
         <template v-else-if="view==='settings'&&route.mode!=='account'">
           <div class="page-heading"><div><div class="eyebrow">LOCAL ENVIRONMENT</div><h1>{{route.label}}<span class="heading-dot">.</span></h1><p>{{route.mode==='appearance'?'选择适合你的颜色与显示模式。':'查看媒体目录、处理组件和服务信息。'}}</p></div></div><AppearanceSettings v-if="route.mode==='appearance'"/><div v-if="route.mode==='environment'" class="panel settings-panel"><h2><Terminal :size="20"/>运行配置</h2><div v-for="(label,key) in {library:'素材根目录',output:'成品输出目录',data:'数据库与缓存',ffmpeg:'FFmpeg',ffprobe:'FFprobe',version:'应用版本',mode:'访问模式'}" :key="key" class="setting"><span>{{label}}</span><code>{{data.settings[key]}}</code></div></div><div v-if="route.mode==='environment'" class="panel settings-panel"><h2><ShieldCheck :size="20"/>本版能力边界</h2><p>已实现扫描、XML 历史资料、直播间信息抓取、显示标题编辑、合并计划、流复制合并及抽样验证。</p><p>支持超长文件自动转码切割及 YouTube 上传与批量管理。FLV 在线播放和实时录制尚未接入；未知时长素材仍阻止执行。</p><p>媒体原片不会自动删除。批量标题不会修改磁盘文件名。录制集成和远程 WebUI 将分阶段加入。</p></div><div v-if="route.mode==='environment'&&data.library.errors.length" class="warning-panel"><h3>扫描期间的异常</h3><p v-for="e in data.library.errors" :key="e">{{e}}</p></div>

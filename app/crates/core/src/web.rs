@@ -268,7 +268,7 @@ async fn task_list(s: &AppState) -> anyhow::Result<Vec<Value>> {
             "video_id": j["video_id"], "bytes": bytes, "offset": offset,
             "channel_id": j["channel_id"], "privacy": j["privacy"],
             "capabilities": {
-                "cancel": false,
+                "cancel": available && ["failed", "paused", "interrupted", "cancelled"].contains(&status),
                 "pause": !s.config.headless && active && ["queued", "running"].contains(&status),
                 "resume": available && ["paused", "interrupted"].contains(&status),
                 "retry": available && status == "failed"
@@ -315,6 +315,7 @@ async fn task_action(
             ))
         }
         ("upload", "pause") => crate::youtube::pause(State(s), Path(source_id.into())).await,
+        ("upload", "cancel") => crate::youtube::abandon(State(s), Path(source_id.into())).await,
         ("upload", "resume" | "retry") => {
             crate::youtube::resume(State(s), Path(source_id.into())).await
         }
@@ -873,17 +874,18 @@ mod task_tests {
     async fn capabilities_follow_executor_state_and_headless_disables_only_upload_actions() {
         let temp = tempfile::tempdir().unwrap();
         let s = state(temp.path(), false);
-        for (status, resume, retry) in [
-            ("queued", false, false),
-            ("running", false, false),
-            ("completed", false, false),
-            ("failed", false, true),
-            ("paused", true, false),
-            ("interrupted", true, false),
+        for (status, cancel, resume, retry) in [
+            ("queued", false, false, false),
+            ("running", false, false, false),
+            ("completed", false, false, false),
+            ("failed", true, false, true),
+            ("paused", true, true, false),
+            ("interrupted", true, true, false),
         ] {
             seed(&s, "failed", status);
             let tasks = task_list(&s).await.unwrap();
             let upload = tasks.iter().find(|t| t["kind"] == "upload").unwrap();
+            assert_eq!(upload["capabilities"]["cancel"], cancel, "{status}");
             assert_eq!(upload["capabilities"]["resume"], resume, "{status}");
             assert_eq!(upload["capabilities"]["retry"], retry, "{status}");
             assert_eq!(

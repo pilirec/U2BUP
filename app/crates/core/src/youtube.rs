@@ -697,12 +697,21 @@ async fn enqueue(State(s): State<Arc<AppState>>, Json(r): Json<Enqueue>) -> Http
     let mut jobs = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for id in &r.artifact_ids {
-        if !seen.insert(id)
-            || old
-                .iter()
-                .any(|j| j.artifact_id == *id && j.channel_id == channel)
-        {
+        if !seen.insert(id) {
             return Err(anyhow::anyhow!("成品已存在上传记录，请继续原任务，避免重复上传").into());
+        }
+        let blockers: Vec<_> = old
+            .iter()
+            .filter(|j| j.artifact_id == *id && j.channel_id == channel)
+            .collect();
+        if blockers
+            .iter()
+            .any(|j| !["failed", "cancelled"].contains(&j.status.as_str()))
+        {
+            return Err(anyhow::anyhow!("成品已存在上传记录，请继续原任务或先取消失败任务，避免重复上传").into());
+        }
+        for stale in blockers {
+            s.db.delete("yt-upload", &stale.id)?;
         }
         let a =
             s.db.get::<Artifact>("artifact", id)?
@@ -1069,6 +1078,28 @@ pub(crate) async fn pause(
         .context("上传未在运行")?
         .cancel();
     Ok(Json(json!({"ok":true})))
+}
+/// Drop a failed / paused / interrupted upload so the artifact can re-enter 上传准备 with new options.
+pub(crate) async fn abandon(
+    State(s): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> HttpResult<Value> {
+    let _queue = s.youtube.queue.lock().await;
+    if s.cancellations
+        .lock()
+        .await
+        .contains_key(&upload_token_key(&id))
+    {
+        return Err(anyhow::anyhow!("上传仍在队列中，请先暂停").into());
+    }
+    let j = s
+        .db
+        .get::<UploadJob>("yt-upload", &id)?
+        .context("任务不存在")?;
+    if !["failed", "paused", "interrupted", "cancelled"].contains(&j.status.as_str()) {
+        return Err(anyhow::anyhow!("仅可清除未成功完成的上传任务").into());
+    }
+    Ok(Json(json!({"ok":true,"removed":s.db.delete("yt-upload",&id)?})))
 }
 pub(crate) async fn resume(
     State(s): State<Arc<AppState>>,
